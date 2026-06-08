@@ -215,6 +215,10 @@ button:disabled {
   flex: 0 1 390px;
 }
 
+.goal-panel {
+  flex: 0 1 330px;
+}
+
 .memory-card {
   display: flex;
   flex-direction: column;
@@ -230,6 +234,21 @@ button:disabled {
     var(--panel);
 }
 
+.goal-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 100px;
+  max-height: 280px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  background:
+    linear-gradient(180deg, rgba(215, 186, 125, 0.05), rgba(85, 194, 162, 0.03)),
+    var(--panel);
+}
+
 .memory-empty,
 .memory-path,
 .memory-heading,
@@ -237,6 +256,11 @@ button:disabled {
 .memory-log-path,
 .memory-command,
 .memory-failure,
+.goal-title,
+.goal-notes,
+.goal-task-title,
+.goal-session,
+.goal-output,
 .history-title,
 .history-subtitle,
 .history-cwd,
@@ -338,6 +362,10 @@ button:disabled {
 .history-meta,
 .history-command-row,
 .history-header-actions,
+.goal-header,
+.goal-actions,
+.goal-task,
+.goal-task-actions,
 .memory-actions,
 .memory-detail-header,
 .memory-detail-top,
@@ -356,8 +384,80 @@ button:disabled {
 }
 
 .history-header-actions,
+.goal-actions,
+.goal-task-actions,
 .memory-actions {
   flex-wrap: wrap;
+}
+
+.goal-title {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.goal-notes {
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
+.goal-section-title {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.goal-task {
+  align-items: flex-start;
+  justify-content: space-between;
+  border-left: 2px solid #707987;
+  padding-left: 8px;
+}
+
+.goal-task.goal-task-doing {
+  border-left-color: #61afef;
+}
+
+.goal-task.goal-task-blocked {
+  border-left-color: var(--danger);
+}
+
+.goal-task.goal-task-done {
+  border-left-color: var(--accent);
+}
+
+.goal-task-title {
+  overflow-wrap: anywhere;
+  color: #d9e2ec;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.goal-status {
+  min-height: 24px;
+  border: 1px solid rgba(85, 194, 162, 0.28);
+  border-radius: 999px;
+  padding: 0 7px;
+  background: rgba(85, 194, 162, 0.08);
+  color: #bcefe0;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.goal-session,
+.goal-output {
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 .history-filters {

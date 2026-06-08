@@ -86,6 +86,46 @@ function isTextPasteShortcut(event) {
   return event.ctrlKey && !event.altKey;
 }
 
+function sanitizeGoalTask(task = {}) {
+  return {
+    id: String(task.id || 'task-id'),
+    title: String(task.title || '').trim(),
+    status: ['todo', 'doing', 'blocked', 'done'].includes(task.status) ? task.status : 'todo',
+    notes: String(task.notes || '').trim(),
+    sessionIds: Array.isArray(task.sessionIds) ? [...new Set(task.sessionIds.map(String))] : []
+  };
+}
+
+function nextGoalTaskStatus(value) {
+  const order = ['todo', 'doing', 'done'];
+  const index = order.indexOf(value);
+  if (value === 'blocked') {
+    return 'doing';
+  }
+  return order[(index + 1) % order.length] || 'todo';
+}
+
+function goalToMarkdown(goal) {
+  const lines = [
+    `# ${goal.title || 'CLI Deck goal'}`,
+    '',
+    `Project: \`${goal.cwd}\``,
+    `Status: ${goal.status || 'active'}`,
+    '',
+    '## Tasks'
+  ];
+
+  if (!goal.tasks.length) {
+    lines.push('- None');
+  } else {
+    for (const task of goal.tasks) {
+      lines.push(`- [${task.status === 'done' ? 'x' : ' '}] ${task.title} (${task.status})`);
+    }
+  }
+
+  return `${lines.join('\n')}\n`;
+}
+
 function classifyFailureCategory(hints) {
   const text = (Array.isArray(hints) ? hints : []).join('\n').toLowerCase();
   if (!text) {
@@ -181,6 +221,26 @@ assert.equal(isTextPasteShortcut({ key: 'V', ctrlKey: true, altKey: false, metaK
 assert.equal(isTextPasteShortcut({ key: 'v', ctrlKey: false, altKey: false, metaKey: true }), true);
 assert.equal(isTextPasteShortcut({ key: 'v', ctrlKey: true, altKey: true, metaKey: false }), false);
 assert.equal(isTextPasteShortcut({ key: 'c', ctrlKey: true, altKey: false, metaKey: false }), false);
+assert.deepEqual(sanitizeGoalTask({ title: '  Ship goal panel  ', status: 'bad', sessionIds: ['a', 'a'] }), {
+  id: 'task-id',
+  title: 'Ship goal panel',
+  status: 'todo',
+  notes: '',
+  sessionIds: ['a']
+});
+assert.equal(nextGoalTaskStatus('todo'), 'doing');
+assert.equal(nextGoalTaskStatus('doing'), 'done');
+assert.equal(nextGoalTaskStatus('done'), 'todo');
+assert.equal(nextGoalTaskStatus('blocked'), 'doing');
+assert.match(
+  goalToMarkdown({
+    title: 'Goal records',
+    cwd: 'C:/development/workspace/tools',
+    status: 'active',
+    tasks: [{ title: 'Build MVP', status: 'done' }]
+  }),
+  /- \[x\] Build MVP \(done\)/
+);
 
 assert.equal(classifyFailureCategory(['npm ERR! command not found']), 'command');
 assert.equal(classifyFailureCategory(['Traceback most recent call last']), 'exception');
