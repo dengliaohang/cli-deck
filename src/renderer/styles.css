@@ -395,6 +395,18 @@ button:disabled {
   font-weight: 750;
 }
 
+.orchestrator-controls {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.orchestrator-controls select {
+  max-width: 130px;
+  min-height: 26px;
+  padding: 0 7px;
+}
+
 .orchestrator-form {
   display: grid;
   gap: 8px;
@@ -429,6 +441,12 @@ button:disabled {
 
 .orchestrator-worker:hover {
   border-color: rgba(85, 194, 162, 0.62);
+}
+
+.orchestrator-worker.brain-worker {
+  border-color: rgba(215, 186, 125, 0.42);
+  background: rgba(215, 186, 125, 0.08);
+  color: #ead9a9;
 }
 
 .orchestrator-task {

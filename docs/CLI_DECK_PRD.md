@@ -102,7 +102,7 @@ History 支持：
 
 ### 4.4 Orchestrator 调度大脑
 
-Orchestrator 是面向多个 AI CLI session 的本地调度层。CLI Deck 作为蜂群大脑，根据 session 的工具类型推断能力，把任务派发给合适的 CLI worker，并解析 worker 输出的结果协议块。
+Orchestrator 是面向多个 AI CLI session 的本地调度层。用户选择一个 AI CLI session 作为蜂群主脑负责规划任务，CLI Deck 作为执行中枢，根据 worker session 的工具类型推断能力，把任务派发给合适的 CLI worker，并解析 worker 输出的结果协议块。
 
 MVP 能力：
 
@@ -110,9 +110,12 @@ MVP 能力：
   - Codex: implement / test / review
   - Claude: review / plan / research
   - OpenCode: implement / test
-  - Custom: custom
-- 用户输入一个 swarm objective 后创建首个任务。
+- Custom: custom
+- 用户输入 swarm objective 后，先发送给选中的 Brain session 生成计划。
+- Brain 输出 `CLI_DECK_PLAN_START` / `CLI_DECK_PLAN_END` 协议块后，CLI Deck 创建 worker tasks。
+- 未选择 Brain 时，CLI Deck 退化为直接创建一个 implement task。
 - Auto dispatch 开启时，自动选择可用 worker 并写入任务 prompt。
+- 派发 prompt 使用 bracketed paste 包裹并发送 Enter，适配 Codex / Claude 这类 TUI 的多行输入提交。
 - worker 完成后输出 `CLI_DECK_RESULT_START` / `CLI_DECK_RESULT_END` 协议块。
 - CLI Deck 解析结果后更新任务状态，并按结果自动排队下一步：
 - `done` / `needs_review` -> review
@@ -131,6 +134,16 @@ details:
 next:
 - suggested next task, or none
 CLI_DECK_RESULT_END
+```
+
+Brain 计划协议：
+
+```text
+CLI_DECK_PLAN_START
+task: implement | short task for an implement-capable worker
+task: review | short task for a review-capable worker
+task: test | short task for a test-capable worker
+CLI_DECK_PLAN_END
 ```
 
 ## 5. 非目标
@@ -361,7 +374,7 @@ Orchestrator 面板在 sidebar 内展示调度目标、worker roster、任务队
 
 交互：
 
-- 输入 swarm objective 并 Dispatch。
+- 选择 Brain session，输入 swarm objective 并 Dispatch。
 - Auto 开关控制是否自动派发 queued task。
 - worker roster 展示当前 live session 和推断能力。
 - Dispatch 按钮可手动派发单个 queued task。
@@ -393,6 +406,7 @@ Orchestrator 面板在 sidebar 内展示调度目标、worker roster、任务队
   - 更新 project memory
   - renderer 收到 `memory:updated`
 - Orchestrator 能创建 objective task，并按能力派发给 live worker session。
+- Orchestrator 能把 objective 发送给选中的 Brain session，并解析 `CLI_DECK_PLAN` 协议块生成 worker tasks。
 - Orchestrator 能解析 `CLI_DECK_RESULT` 协议块，并根据 status 排队 review/test/research 后续任务。
 - Windows `npm.cmd run build:dir` 成功。
 - `npm.cmd test` 成功。

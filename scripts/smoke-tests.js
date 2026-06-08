@@ -216,6 +216,21 @@ function parseResultBlock(block) {
   return result;
 }
 
+function parsePlanBlock(block) {
+  const tasks = [];
+  for (const line of block.split(/\r?\n/)) {
+    const match = line.trim().match(/^task:\s*([a-z_]+)\s*\|\s*(.+)$/i);
+    if (match) {
+      tasks.push({ capability: match[1].toLowerCase(), title: match[2].trim() });
+    }
+  }
+  return tasks;
+}
+
+function wrapSubmittedPrompt(prompt) {
+  return `\x1b[200~${prompt}\x1b[201~\r`;
+}
+
 function chooseNextCapability(result, completedTask = null) {
   const completedCapability = completedTask?.capability || '';
   if (result.status === 'blocked') {
@@ -277,6 +292,20 @@ assert.equal(parsedResult.status, 'needs_review');
 assert.equal(parsedResult.summary, 'implemented the feature');
 assert.deepEqual(parsedResult.details, ['changed renderer']);
 assert.equal(chooseNextCapability(parsedResult), 'review');
+assert.deepEqual(
+  parsePlanBlock(`
+CLI_DECK_PLAN_START
+task: implement | build the feature
+task: review | review the diff
+CLI_DECK_PLAN_END
+`),
+  [
+    { capability: 'implement', title: 'build the feature' },
+    { capability: 'review', title: 'review the diff' }
+  ]
+);
+assert.equal(wrapSubmittedPrompt('hello').startsWith('\x1b[200~'), true);
+assert.equal(wrapSubmittedPrompt('hello').endsWith('\x1b[201~\r'), true);
 assert.equal(chooseNextCapability({ status: 'done' }, { capability: 'implement' }), 'review');
 assert.equal(chooseNextCapability({ status: 'done' }, { capability: 'review' }), 'test');
 assert.equal(chooseNextCapability({ status: 'blocked' }), 'research');

@@ -25,7 +25,8 @@ const state = {
     tasks: [],
     messages: [],
     autoDispatch: true,
-    nextTaskNumber: 1
+    nextTaskNumber: 1,
+    brainSessionId: ''
   }
 };
 
@@ -56,6 +57,7 @@ const elements = {
   memoryHistoryButton: document.querySelector('#memory-history-button'),
   memoryCard: document.querySelector('#memory-card'),
   orchestratorAutoDispatchInput: document.querySelector('#orchestrator-auto-dispatch'),
+  orchestratorBrainSelect: document.querySelector('#orchestrator-brain'),
   orchestratorForm: document.querySelector('#orchestrator-form'),
   orchestratorGoalInput: document.querySelector('#orchestrator-goal'),
   orchestratorQueue: document.querySelector('#orchestrator-queue'),
@@ -581,6 +583,31 @@ function createSwarmTask(title, capability = 'implement', sourceTaskId = null) {
   };
 }
 
+function writeSubmittedPrompt(sessionId, prompt) {
+  const wrapped = `\x1b[200~${prompt}\x1b[201~\r`;
+  window.cliDeck.writeTerminal(sessionId, wrapped);
+}
+
+function buildBrainPrompt(objective) {
+  return [
+    '',
+    'CLI Deck swarm brain task',
+    '',
+    'You are the selected swarm brain. Break the objective into executable worker tasks.',
+    'Return exactly one plan block using this protocol:',
+    '',
+    'CLI_DECK_PLAN_START',
+    'task: implement | short task for an implement-capable worker',
+    'task: review | short task for a review-capable worker',
+    'task: test | short task for a test-capable worker',
+    'CLI_DECK_PLAN_END',
+    '',
+    'Objective:',
+    objective,
+    ''
+  ].join('\n');
+}
+
 function buildWorkerPrompt(task, session) {
   return [
     '',
@@ -631,7 +658,7 @@ function dispatchTask(taskId) {
 
   task.status = 'running';
   task.assignedSessionId = session.id;
-  window.cliDeck.writeTerminal(session.id, `${buildWorkerPrompt(task, session)}\r`);
+  writeSubmittedPrompt(session.id, buildWorkerPrompt(task, session));
   addOrchestratorMessage('dispatch', `${task.id} -> ${session.title}`, { taskId: task.id, sessionId: session.id });
   renderOrchestrator();
 }
@@ -731,15 +758,37 @@ function parseResultBlock(block) {
   return result;
 }
 
+function parsePlanBlock(block) {
+  const tasks = [];
+  for (const line of block.split(/\r?\n/)) {
+    const match = line.trim().match(/^task:\s*([a-z_]+)\s*\|\s*(.+)$/i);
+    if (match) {
+      tasks.push({ capability: match[1].toLowerCase(), title: match[2].trim() });
+    }
+  }
+  return tasks;
+}
+
 function consumeResultBlocks(session, data) {
   session.orchestratorBuffer = `${session.orchestratorBuffer || ''}${data}`;
-  const results = [];
-  let start = session.orchestratorBuffer.indexOf('CLI_DECK_RESULT_START');
-  let end = session.orchestratorBuffer.indexOf('CLI_DECK_RESULT_END');
+  const events = [];
+
+  let start = session.orchestratorBuffer.indexOf('CLI_DECK_PLAN_START');
+  let end = session.orchestratorBuffer.indexOf('CLI_DECK_PLAN_END');
+  while (start !== -1 && end !== -1 && end > start) {
+    const blockEnd = end + 'CLI_DECK_PLAN_END'.length;
+    events.push({ type: 'plan', tasks: parsePlanBlock(session.orchestratorBuffer.slice(start, blockEnd)) });
+    session.orchestratorBuffer = session.orchestratorBuffer.slice(blockEnd);
+    start = session.orchestratorBuffer.indexOf('CLI_DECK_PLAN_START');
+    end = session.orchestratorBuffer.indexOf('CLI_DECK_PLAN_END');
+  }
+
+  start = session.orchestratorBuffer.indexOf('CLI_DECK_RESULT_START');
+  end = session.orchestratorBuffer.indexOf('CLI_DECK_RESULT_END');
 
   while (start !== -1 && end !== -1 && end > start) {
     const blockEnd = end + 'CLI_DECK_RESULT_END'.length;
-    results.push(parseResultBlock(session.orchestratorBuffer.slice(start, blockEnd)));
+    events.push({ type: 'result', result: parseResultBlock(session.orchestratorBuffer.slice(start, blockEnd)) });
     session.orchestratorBuffer = session.orchestratorBuffer.slice(blockEnd);
     start = session.orchestratorBuffer.indexOf('CLI_DECK_RESULT_START');
     end = session.orchestratorBuffer.indexOf('CLI_DECK_RESULT_END');
@@ -749,7 +798,20 @@ function consumeResultBlocks(session, data) {
     session.orchestratorBuffer = session.orchestratorBuffer.slice(-12000);
   }
 
-  return results;
+  return events;
+}
+
+function handleBrainPlan(session, plannedTasks) {
+  if (!plannedTasks.length) {
+    addOrchestratorMessage('blocked', `${session.title} returned an empty plan`);
+    return;
+  }
+  for (const item of plannedTasks.reverse()) {
+    state.orchestrator.tasks.unshift(createSwarmTask(item.title, item.capability));
+  }
+  addOrchestratorMessage('plan', `${session.title} planned ${plannedTasks.length} worker tasks`);
+  renderOrchestrator();
+  dispatchQueuedTasks();
 }
 
 function handleWorkerResult(session, result) {
@@ -773,11 +835,42 @@ function submitSwarmObjective(value) {
     setStatus('Swarm objective is required');
     return;
   }
+  elements.orchestratorGoalInput.value = '';
+
+  const brain = state.sessions.get(state.orchestrator.brainSessionId);
+  if (brain && !brain.exited) {
+    writeSubmittedPrompt(brain.id, buildBrainPrompt(objective));
+    addOrchestratorMessage('brain', `Sent objective to brain: ${brain.title}`);
+    return;
+  }
+
   const task = createSwarmTask(objective, 'implement');
   state.orchestrator.tasks.unshift(task);
-  elements.orchestratorGoalInput.value = '';
-  addOrchestratorMessage('objective', `Queued objective: ${objective}`, { taskId: task.id });
+  addOrchestratorMessage('objective', `No brain selected. Queued fallback objective: ${objective}`, { taskId: task.id });
   dispatchQueuedTasks();
+}
+
+function renderBrainSelect(workers) {
+  const current = state.orchestrator.brainSessionId;
+  elements.orchestratorBrainSelect.replaceChildren();
+  const empty = document.createElement('option');
+  empty.value = '';
+  empty.textContent = 'No brain';
+  elements.orchestratorBrainSelect.append(empty);
+
+  for (const session of workers) {
+    const option = document.createElement('option');
+    option.value = session.id;
+    option.textContent = session.title;
+    elements.orchestratorBrainSelect.append(option);
+  }
+
+  if (workers.some((session) => session.id === current)) {
+    elements.orchestratorBrainSelect.value = current;
+  } else {
+    state.orchestrator.brainSessionId = '';
+    elements.orchestratorBrainSelect.value = '';
+  }
 }
 
 function renderOrchestrator() {
@@ -785,6 +878,7 @@ function renderOrchestrator() {
   elements.orchestratorLog.replaceChildren();
 
   const workers = Array.from(state.sessions.values()).filter((session) => !session.exited);
+  renderBrainSelect(workers);
   const roster = document.createElement('div');
   roster.className = 'orchestrator-roster';
   if (workers.length === 0) {
@@ -792,9 +886,9 @@ function renderOrchestrator() {
   } else {
     for (const session of workers) {
       const row = document.createElement('div');
-      row.className = 'orchestrator-worker';
+      row.className = session.id === state.orchestrator.brainSessionId ? 'orchestrator-worker brain-worker' : 'orchestrator-worker';
       appendText(row, 'span', null, session.title);
-      appendText(row, 'span', null, formatCapabilities(session.capabilities));
+      appendText(row, 'span', null, session.id === state.orchestrator.brainSessionId ? 'brain' : formatCapabilities(session.capabilities));
       roster.append(row);
     }
   }
@@ -1423,6 +1517,11 @@ elements.orchestratorAutoDispatchInput.addEventListener('change', () => {
   addOrchestratorMessage('config', `Auto dispatch ${state.orchestrator.autoDispatch ? 'enabled' : 'disabled'}`);
   dispatchQueuedTasks();
 });
+elements.orchestratorBrainSelect.addEventListener('change', () => {
+  state.orchestrator.brainSessionId = elements.orchestratorBrainSelect.value;
+  const brain = state.sessions.get(state.orchestrator.brainSessionId);
+  addOrchestratorMessage('config', brain ? `Brain selected: ${brain.title}` : 'Brain cleared');
+});
 elements.browseCwdButton.addEventListener('click', async () => {
   const selectedPath = await window.cliDeck.selectDirectory();
   if (selectedPath) {
@@ -1473,8 +1572,12 @@ window.cliDeck.onTerminalData(({ id, data }) => {
   const session = state.sessions.get(id);
   if (session) {
     session.term.write(data);
-    for (const result of consumeResultBlocks(session, data)) {
-      handleWorkerResult(session, result);
+    for (const event of consumeResultBlocks(session, data)) {
+      if (event.type === 'plan') {
+        handleBrainPlan(session, event.tasks);
+      } else if (event.type === 'result') {
+        handleWorkerResult(session, event.result);
+      }
     }
   }
 });
