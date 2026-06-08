@@ -1,8 +1,8 @@
 # CLI Deck
 
-CLI Deck 是一个用于同时运行和管理多个 AI CLI 会话的 Electron 桌面工作台。它把 Codex、Claude Code、OpenCode 或任意自定义 CLI 放在同一个平铺窗口里，并为每个工作目录保存本地项目记忆。
+[中文](README.md) | [English](README_EN.md)
 
-English summary: CLI Deck is a tiled desktop workspace for running multiple AI CLI sessions with local project memory.
+CLI Deck 是一个用于同时运行和管理多个 AI CLI 会话的 Electron 桌面工作台。它把 Codex、Claude Code、OpenCode 或任意自定义 CLI 放在同一个平铺窗口里，并为每个工作目录保存本地项目记忆。
 
 ## 功能特性
 
@@ -166,6 +166,7 @@ npm run build:mac
 - `docs/`
 - `scripts/`
 - `README.md`
+- `README_EN.md`
 - `LICENSE`
 - `package.json`
 - `package-lock.json`
