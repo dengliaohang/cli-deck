@@ -30,7 +30,8 @@ const state = {
     nextTaskNumber: 1,
     nextRunNumber: 1,
     brainSessionId: '',
-    pendingBrainObjective: ''
+    pendingBrainObjective: '',
+    pendingWorkerTaskId: ''
   }
 };
 
@@ -775,13 +776,8 @@ function buildWorkerPrompt(task, session) {
   ].join('\n');
 }
 
-function findSessionForCapability(capability) {
-  const liveSessions = Array.from(state.sessions.values()).filter((session) => !session.exited);
-  return (
-    liveSessions.find((session) => session.capabilities.includes(capability)) ||
-    liveSessions[0] ||
-    null
-  );
+function getLiveSessions() {
+  return Array.from(state.sessions.values()).filter((session) => !session.exited);
 }
 
 function getLiveBrainSession() {
@@ -789,12 +785,26 @@ function getLiveBrainSession() {
   return brain && !brain.exited ? brain : null;
 }
 
+function getLiveWorkerSessions() {
+  const brain = getLiveBrainSession();
+  return getLiveSessions().filter((session) => session.id !== brain?.id && session.orchestratorRole !== 'brain');
+}
+
+function findSessionForCapability(capability) {
+  const liveSessions = getLiveWorkerSessions();
+  return (
+    liveSessions.find((session) => session.capabilities.includes(capability)) ||
+    liveSessions.find((session) => session.capabilities.includes('custom')) ||
+    null
+  );
+}
+
 function findSessionForTarget(target, capability = '') {
-  const liveSessions = Array.from(state.sessions.values()).filter((session) => !session.exited);
   const value = String(target || '').trim().toLowerCase();
   if (value === 'brain') {
     return getLiveBrainSession();
   }
+  const liveSessions = getLiveWorkerSessions();
   if (value) {
     const byIdentity = liveSessions.find(
       (session) => session.id.toLowerCase() === value || session.title.toLowerCase() === value
@@ -847,9 +857,11 @@ function dispatchTask(taskId, targetSessionId = '') {
     task.status = 'blocked';
     task.blockedReason = `No live CLI session can run ${task.capability}.`;
     task.updatedAt = Date.now();
+    state.orchestrator.pendingWorkerTaskId = task.id;
     addTaskEvent('blocked', task.id, { reason: task.blockedReason });
-    addOrchestratorMessage('blocked', `No live CLI session can run ${task.id}. Start a worker session first.`);
+    addOrchestratorMessage('blocked', `No worker can run ${task.id}. Create a worker session; Brain will not execute worker tasks.`);
     renderOrchestrator();
+    openWorkerDialogForTask(task);
     return;
   }
 
@@ -1257,7 +1269,7 @@ function submitSwarmObjective(value) {
   }
   elements.orchestratorGoalInput.value = '';
 
-  const liveSessions = Array.from(state.sessions.values()).filter((session) => !session.exited);
+  const liveSessions = getLiveSessions();
   if (liveSessions.length === 0) {
     state.orchestrator.pendingBrainObjective = objective;
     openBrainDialog();
@@ -1272,7 +1284,9 @@ function submitSwarmObjective(value) {
       state.orchestrator.tasks.unshift(task);
       addOrchestratorMessage('objective', `Queued implement task from objective: ${objective}`, { taskId: task.id });
       dispatchTask(task.id);
-      sendStatusToBrain('objective dispatch');
+      if (task.status === 'running') {
+        sendStatusToBrain('objective dispatch');
+      }
       return;
     }
     submitBrainPrompt(brain.id, buildBrainObjectivePrompt(objective));
@@ -1340,7 +1354,8 @@ async function createBrainFromDialog() {
     command,
     args: splitArgs(elements.brainArgsInput.value),
     cwd: elements.brainCwdInput.value.trim() || state.defaultCwd,
-    memoryEnabled: elements.brainMemoryEnabledInput.checked
+    memoryEnabled: elements.brainMemoryEnabledInput.checked,
+    orchestratorRole: 'brain'
   });
   if (!session) {
     return;
@@ -1383,19 +1398,23 @@ function renderOrchestrator() {
   elements.orchestratorQueue.replaceChildren();
   elements.orchestratorLog.replaceChildren();
 
-  const workers = Array.from(state.sessions.values()).filter((session) => !session.exited);
-  renderBrainSelect(workers);
+  const liveSessions = getLiveSessions();
+  const workers = getLiveWorkerSessions();
+  renderBrainSelect(liveSessions);
   const roster = document.createElement('div');
   roster.className = 'orchestrator-roster';
-  if (workers.length === 0) {
-    appendText(roster, 'p', 'memory-empty', 'Start CLI sessions to create workers.');
+  if (liveSessions.length === 0) {
+    appendText(roster, 'p', 'memory-empty', 'Start CLI sessions to create Brain and workers.');
   } else {
-    for (const session of workers) {
+    for (const session of liveSessions) {
       const row = document.createElement('div');
       row.className = session.id === state.orchestrator.brainSessionId ? 'orchestrator-worker brain-worker' : 'orchestrator-worker';
       appendText(row, 'span', null, session.title);
       appendText(row, 'span', null, session.id === state.orchestrator.brainSessionId ? 'brain' : formatCapabilities(session.capabilities));
       roster.append(row);
+    }
+    if (workers.length === 0) {
+      appendText(roster, 'p', 'memory-empty', 'No workers yet. Brain sessions plan only; create a worker to execute tasks.');
     }
   }
   elements.orchestratorQueue.append(roster);
@@ -1864,6 +1883,7 @@ async function startSession(config) {
     body,
     listItem: null,
     sourceConfig: launchConfig,
+    orchestratorRole: launchConfig.orchestratorRole || 'worker',
     exited: false,
     capabilities: inferCapabilities(created.command),
     orchestratorBuffer: ''
@@ -1880,6 +1900,9 @@ async function startSession(config) {
   setMemoryMode('current');
   renderOrchestrator();
   syncLayout();
+  if (session.orchestratorRole !== 'brain') {
+    dispatchPendingWorkerTask(session);
+  }
   return session;
 }
 
@@ -1891,6 +1914,53 @@ function openDialog(config = {}) {
   elements.memoryEnabledInput.checked = config.memoryEnabled !== false;
   elements.dialog.showModal();
   window.setTimeout(() => elements.commandInput.focus(), 0);
+}
+
+function getPreferredWorkerPreset(capability = 'implement') {
+  const presets = state.presets || [];
+  if (capability === 'review' || capability === 'research') {
+    return presets.find((preset) => inferCapabilities(preset.command).includes(capability)) || presets[0] || {};
+  }
+  return (
+    presets.find((preset) => inferCapabilities(preset.command).includes('implement')) ||
+    presets.find((preset) => inferCapabilities(preset.command).includes(capability)) ||
+    presets[0] ||
+    {}
+  );
+}
+
+function openWorkerDialogForTask(task) {
+  const preset = getPreferredWorkerPreset(task?.capability || 'implement');
+  openDialog({
+    name: `Worker ${task?.capability || 'implement'}`,
+    command: preset.command || 'codex',
+    args: preset.args || [],
+    cwd: state.defaultCwd,
+    memoryEnabled: true
+  });
+  setStatus(`Create a worker for ${task?.id || 'the task'}. Brain sessions are excluded from worker dispatch.`);
+}
+
+function dispatchPendingWorkerTask(session) {
+  const taskId = state.orchestrator.pendingWorkerTaskId;
+  if (!taskId || !session || session.exited || session.id === state.orchestrator.brainSessionId) {
+    return;
+  }
+  const task = state.orchestrator.tasks.find((item) => item.id === taskId);
+  if (!task || !['ready', 'blocked'].includes(task.status)) {
+    state.orchestrator.pendingWorkerTaskId = '';
+    return;
+  }
+  if (!session.capabilities.includes(task.capability) && !session.capabilities.includes('custom')) {
+    return;
+  }
+  retryTask(task);
+  state.orchestrator.pendingWorkerTaskId = '';
+  addOrchestratorMessage('dispatch', `Worker created for ${task.id}: ${session.title}`, {
+    taskId: task.id,
+    sessionId: session.id
+  });
+  window.setTimeout(() => dispatchTask(task.id, session.id), 600);
 }
 
 function openSettingsDialog() {

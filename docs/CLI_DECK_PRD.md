@@ -110,7 +110,7 @@ Orchestrator 是面向多个 AI CLI session 的本地调度层。CLI Deck 内部
 - Task Board 记录 task、run、event，UI、Brain、worker 结果都围绕这个状态机读写。
 - Dispatcher 负责 claim ready task、选择 worker、创建 run、处理 retry/block/cancel/reclaim。
 - Worker Adapter 隔离不同 CLI 工具：当前实现 `pty` adapter，后续可接 `codex app-server`、非交互命令、MCP/IPC 写回。
-- Brain 负责规划和建议，不直接拥有任务真实状态。CLI Deck 根据 worker result 和 task board 状态决定下一步。
+- Brain 负责规划和建议，不进入默认 worker 派发池，也不直接拥有任务真实状态。CLI Deck 根据 worker result 和 task board 状态决定下一步。
 
 MVP 能力：
 
@@ -122,6 +122,8 @@ MVP 能力：
 - 用户输入 swarm objective 后，开发 / 构建 / 测试 / 复核类目标由 CLI Deck 直接创建 worker task 并按能力派发；普通聊天目标发送给 Brain session。
 - task 状态：`ready` / `running` / `blocked` / `done` / `cancelled` / `archived`。
 - 每次派发创建 run，记录 run id、worker session、adapter、attempt、result、error。
+- Dispatcher 默认排除 Brain session；只有 `target: brain` 或普通聊天目标才会写入 Brain。
+- 如果只有 Brain 没有 worker，开发任务会进入 `blocked`，并引导用户创建 worker session 后自动 retry/dispatch。
 - worker session 退出但 task 未完成时，CLI Deck 把 task 标记为 `blocked`，并记录 reclaim event。
 - UI 展示 worker roster、task board、run/attempt 摘要和事件流。
 - 如果没有任何 live CLI session，Dispatch 会弹出创建 Brain 的对话框，让用户选择 CLI 类型、工作目录和 Memory 选项；Brain 启动成功后继续处理刚才的 objective。

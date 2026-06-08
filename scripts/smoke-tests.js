@@ -218,6 +218,41 @@ function inferCapabilities(command) {
   return ['custom'];
 }
 
+function getTestWorkerSessions(sessions, brainSessionId) {
+  return sessions.filter((session) => !session.exited && session.id !== brainSessionId && session.orchestratorRole !== 'brain');
+}
+
+function findTestSessionForCapability(sessions, capability, brainSessionId = '') {
+  const workers = getTestWorkerSessions(sessions, brainSessionId);
+  return (
+    workers.find((session) => session.capabilities.includes(capability)) ||
+    workers.find((session) => session.capabilities.includes('custom')) ||
+    null
+  );
+}
+
+function findTestSessionForTarget(sessions, target, capability = '', brainSessionId = '') {
+  const value = String(target || '').trim().toLowerCase();
+  const brain = sessions.find((session) => session.id === brainSessionId && !session.exited) || null;
+  if (value === 'brain') {
+    return brain;
+  }
+  const workers = getTestWorkerSessions(sessions, brainSessionId);
+  if (value) {
+    const byIdentity = workers.find(
+      (session) => session.id.toLowerCase() === value || session.title.toLowerCase() === value
+    );
+    if (byIdentity) {
+      return byIdentity;
+    }
+    const byCapability = workers.find((session) => session.capabilities.includes(value));
+    if (byCapability) {
+      return byCapability;
+    }
+  }
+  return capability ? findTestSessionForCapability(sessions, capability, brainSessionId) : null;
+}
+
 function isDevelopmentObjective(value) {
   const text = String(value || '').toLowerCase();
   return /(\b(code|program|script|app|feature|implement|build|test|review|fix|debug|refactor)\b|编写|写一|写个|程序|代码|实现|开发|修复|测试|构建|重构|复核)/i.test(text);
@@ -456,6 +491,15 @@ assert.equal(isTextPasteShortcut({ key: 'c', ctrlKey: true, altKey: false, metaK
 assert.deepEqual(inferCapabilities('codex'), ['implement', 'test', 'review']);
 assert.deepEqual(inferCapabilities('claude'), ['review', 'plan', 'research']);
 assert.deepEqual(inferCapabilities('opencode'), ['implement', 'test']);
+const brainOnlySessions = [{ id: 'brain-1', title: 'Brain codex', capabilities: ['implement', 'test', 'review'] }];
+assert.equal(findTestSessionForCapability(brainOnlySessions, 'implement', 'brain-1'), null);
+const workerSessions = [
+  ...brainOnlySessions,
+  { id: 'worker-1', title: 'Worker codex', capabilities: ['implement', 'test', 'review'] }
+];
+assert.equal(findTestSessionForCapability(workerSessions, 'implement', 'brain-1').id, 'worker-1');
+assert.equal(findTestSessionForTarget(workerSessions, 'brain', 'implement', 'brain-1').id, 'brain-1');
+assert.equal(findTestSessionForTarget(workerSessions, 'Brain codex', 'implement', 'brain-1').id, 'worker-1');
 assert.equal(isDevelopmentObjective('编写一个hello程序'), true);
 assert.equal(isDevelopmentObjective('fix paste handling'), true);
 assert.equal(isDevelopmentObjective('介绍一下你自己'), false);
