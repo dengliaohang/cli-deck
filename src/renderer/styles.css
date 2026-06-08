@@ -414,6 +414,24 @@ button:disabled {
   text-transform: uppercase;
 }
 
+.goal-current-session {
+  margin: 0;
+  border: 1px solid rgba(97, 175, 239, 0.22);
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: rgba(97, 175, 239, 0.07);
+  color: #c8e5ff;
+  font-size: 11px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.goal-current-session.goal-warning {
+  border-color: rgba(215, 186, 125, 0.28);
+  background: rgba(215, 186, 125, 0.08);
+  color: #ead9a9;
+}
+
 .goal-inline-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

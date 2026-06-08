@@ -585,9 +585,16 @@ function renderGoal(goal) {
     appendText(elements.goalCard, 'p', 'goal-notes', goal.notes);
   }
 
+  const active = state.sessions.get(state.activeId);
+  const attachHint = active
+    ? `Current session: ${active.title || active.id}`
+    : 'No active session. Select or start a session before attaching.';
+  appendText(elements.goalCard, 'p', active ? 'goal-current-session' : 'goal-current-session goal-warning', attachHint);
+
   const actions = document.createElement('div');
   actions.className = 'goal-actions';
-  appendButton(actions, 'tiny-button', 'Attach session', () => attachActiveSessionToGoal());
+  const attachButton = appendButton(actions, 'tiny-button', 'Attach current', () => attachActiveSessionToGoal(attachButton));
+  attachButton.disabled = !active;
   appendButton(actions, 'tiny-button', 'Export MD', () => exportCurrentGoal());
   elements.goalCard.append(actions);
 
@@ -740,17 +747,28 @@ async function deleteGoalTask(taskId) {
   }
 }
 
-async function attachActiveSessionToGoal() {
+async function attachActiveSessionToGoal(button) {
   const active = state.sessions.get(state.activeId);
   if (!active) {
     setStatus('Start or select a session before attaching it');
+    refreshGoalPanel();
     return;
   }
   try {
-    renderGoal(await window.cliDeck.attachGoalSession(getGoalCwd(), active.id));
-    setStatus('Session attached');
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Attaching...';
+    }
+    const goal = await window.cliDeck.attachGoalSession(active.cwd, active.id);
+    renderGoal(goal);
+    setStatus(`Attached: ${active.title}`);
   } catch (error) {
     setStatus(`Attach failed: ${error.message}`);
+  } finally {
+    if (button && button.isConnected) {
+      button.disabled = false;
+      button.textContent = 'Attach current';
+    }
   }
 }
 
