@@ -1090,6 +1090,11 @@ ipcMain.handle('app:openPath', async (_event, targetPath) => {
 
 ipcMain.handle('app:readClipboardText', () => clipboard.readText());
 
+ipcMain.handle('app:writeClipboardText', (_event, text) => {
+  clipboard.writeText(String(text || ''));
+  return true;
+});
+
 ipcMain.handle('memory:getProject', (_event, cwd) => {
   if (!cwd || typeof cwd !== 'string') {
     return null;

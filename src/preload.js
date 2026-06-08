@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('cliDeck', {
   selectDirectory: () => ipcRenderer.invoke('app:selectDirectory'),
   openPath: (targetPath) => ipcRenderer.invoke('app:openPath', targetPath),
   readClipboardText: () => ipcRenderer.invoke('app:readClipboardText'),
+  writeClipboardText: (text) => ipcRenderer.invoke('app:writeClipboardText', text),
   getProjectMemory: (cwd) => ipcRenderer.invoke('memory:getProject', cwd),
   getProjectMemoryByKey: (projectKey) => ipcRenderer.invoke('memory:getProjectByKey', projectKey),
   listProjectMemories: (limit) => ipcRenderer.invoke('memory:listProjects', limit),

@@ -820,6 +820,31 @@ async function pasteClipboardText(session) {
   }
 }
 
+async function copyText(value, status = 'Copied') {
+  try {
+    await window.cliDeck.writeClipboardText(value);
+    setStatus(status);
+    return true;
+  } catch {
+    setStatus(value);
+    return false;
+  }
+}
+
+async function copyTerminalSelection(session) {
+  const selection = session.term.getSelection();
+  if (!selection) {
+    return false;
+  }
+
+  const copied = await copyText(selection, 'Copied selection');
+  if (copied) {
+    session.term.clearSelection();
+    session.term.focus();
+  }
+  return copied;
+}
+
 function attachTextPasteHandlers(session) {
   session.term.attachCustomKeyEventHandler((event) => {
     if (event.type === 'keydown' && isTextPasteShortcut(event)) {
@@ -840,6 +865,15 @@ function attachTextPasteHandlers(session) {
       event.preventDefault();
       event.stopPropagation();
     }
+  });
+
+  session.body.addEventListener('contextmenu', (event) => {
+    if (!session.term.hasSelection()) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    copyTerminalSelection(session);
   });
 }
 
@@ -1008,19 +1042,10 @@ function openActiveCwd() {
   }
 }
 
-async function copyText(value) {
-  try {
-    await navigator.clipboard.writeText(value);
-    setStatus('Copied command');
-  } catch {
-    setStatus(value);
-  }
-}
-
 function copySessionCommand(id) {
   const session = state.sessions.get(id);
   if (session) {
-    copyText(commandLineFromConfig(session));
+    copyText(commandLineFromConfig(session), 'Copied command');
   }
 }
 
