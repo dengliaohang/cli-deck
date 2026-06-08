@@ -2,7 +2,7 @@
 const os = require('node:os');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
-const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, clipboard, dialog, ipcMain, shell } = require('electron');
 const Store = require('electron-store');
 const pty = require('@lydell/node-pty');
 
@@ -1087,6 +1087,8 @@ ipcMain.handle('app:openPath', async (_event, targetPath) => {
   }
   return true;
 });
+
+ipcMain.handle('app:readClipboardText', () => clipboard.readText());
 
 ipcMain.handle('memory:getProject', (_event, cwd) => {
   if (!cwd || typeof cwd !== 'string') {

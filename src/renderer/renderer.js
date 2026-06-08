@@ -790,6 +790,59 @@ function createTerminal() {
   return { term, fit };
 }
 
+function isTextPasteShortcut(event) {
+  if (!event || String(event.key || '').toLowerCase() !== 'v') {
+    return false;
+  }
+
+  if (event.metaKey) {
+    return true;
+  }
+
+  return event.ctrlKey && !event.altKey;
+}
+
+function writePastedText(session, text) {
+  if (!session || session.exited || !text) {
+    return false;
+  }
+  window.cliDeck.writeTerminal(session.id, text);
+  session.term.focus();
+  return true;
+}
+
+async function pasteClipboardText(session) {
+  try {
+    const text = await window.cliDeck.readClipboardText();
+    writePastedText(session, text);
+  } catch (error) {
+    setStatus(`Paste failed: ${error.message}`);
+  }
+}
+
+function attachTextPasteHandlers(session) {
+  session.term.attachCustomKeyEventHandler((event) => {
+    if (event.type === 'keydown' && isTextPasteShortcut(event)) {
+      event.preventDefault();
+      pasteClipboardText(session);
+      return false;
+    }
+    return true;
+  });
+
+  session.body.addEventListener('paste', (event) => {
+    const text =
+      event.clipboardData?.getData('text/plain') ||
+      event.clipboardData?.getData('text') ||
+      '';
+
+    if (writePastedText(session, text)) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  });
+}
+
 async function startSession(config) {
   const { term, fit } = createTerminal();
   const launchConfig = {
@@ -845,6 +898,7 @@ async function startSession(config) {
   state.sessions.set(session.id, session);
 
   term.clear();
+  attachTextPasteHandlers(session);
   term.onData((data) => window.cliDeck.writeTerminal(session.id, data));
   setActiveSession(session.id);
   setMemoryMode('current');

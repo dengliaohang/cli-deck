@@ -74,6 +74,18 @@ function isSessionMemoryEnabled(config) {
   return config.memoryEnabled !== false;
 }
 
+function isTextPasteShortcut(event) {
+  if (!event || String(event.key || '').toLowerCase() !== 'v') {
+    return false;
+  }
+
+  if (event.metaKey) {
+    return true;
+  }
+
+  return event.ctrlKey && !event.altKey;
+}
+
 function classifyFailureCategory(hints) {
   const text = (Array.isArray(hints) ? hints : []).join('\n').toLowerCase();
   if (!text) {
@@ -164,6 +176,11 @@ assert.equal(
 assert.equal(isSessionMemoryEnabled({}), true);
 assert.equal(isSessionMemoryEnabled({ memoryEnabled: true }), true);
 assert.equal(isSessionMemoryEnabled({ memoryEnabled: false }), false);
+assert.equal(isTextPasteShortcut({ key: 'v', ctrlKey: true, altKey: false, metaKey: false }), true);
+assert.equal(isTextPasteShortcut({ key: 'V', ctrlKey: true, altKey: false, metaKey: false }), true);
+assert.equal(isTextPasteShortcut({ key: 'v', ctrlKey: false, altKey: false, metaKey: true }), true);
+assert.equal(isTextPasteShortcut({ key: 'v', ctrlKey: true, altKey: true, metaKey: false }), false);
+assert.equal(isTextPasteShortcut({ key: 'c', ctrlKey: true, altKey: false, metaKey: false }), false);
 
 assert.equal(classifyFailureCategory(['npm ERR! command not found']), 'command');
 assert.equal(classifyFailureCategory(['Traceback most recent call last']), 'exception');
