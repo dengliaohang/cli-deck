@@ -119,16 +119,17 @@ MVP 能力：
   - Claude: review / plan / research
   - OpenCode: implement / test
 - Custom: custom
-- 用户输入 swarm objective 后，开发 / 构建 / 测试 / 复核类目标由 CLI Deck 直接创建 worker task 并按能力派发；普通聊天目标发送给 Brain session。
+- 用户输入 swarm objective 后，开发 / 构建 / 测试 / 复核类目标由 CLI Deck 直接创建 worker task 并按能力派发；即使当前没有任何 CLI，也优先弹出 worker 创建对话框。
+- 普通聊天目标才发送给 Brain session；如果没有 Brain，才弹出 Brain 创建对话框。
 - task 状态：`ready` / `running` / `blocked` / `done` / `cancelled` / `archived`。
 - 每次派发创建 run，记录 run id、worker session、adapter、attempt、result、error。
 - Dispatcher 默认排除 Brain session；只有 `target: brain` 或普通聊天目标才会写入 Brain。
-- 如果只有 Brain 没有 worker，开发任务会进入 `blocked`，并引导用户创建 worker session 后自动 retry/dispatch。
+- 如果没有 worker，开发任务会进入 `blocked`，并引导用户创建 worker session 后自动 retry/dispatch。
 - worker session 退出但 task 未完成时，CLI Deck 把 task 标记为 `blocked`，并记录 reclaim event。
 - UI 展示 worker roster、task board、run/attempt 摘要和事件流。
-- 如果没有任何 live CLI session，Dispatch 会弹出创建 Brain 的对话框，让用户选择 CLI 类型、工作目录和 Memory 选项；Brain 启动成功后继续处理刚才的 objective。
+- 如果没有任何 live CLI session，开发目标会弹出创建 worker 的对话框；普通聊天目标会弹出创建 Brain 的对话框。
 - Brain 可接收普通聊天目标、worker result 和 swarm status；当 Brain 输出 `CLI_DECK_COMMAND_ACTUAL_START` / `CLI_DECK_COMMAND_ACTUAL_END` 或 `CLI_DECK_PLAN_ACTUAL_START` / `CLI_DECK_PLAN_ACTUAL_END` 协议块后，CLI Deck 执行后续调度动作。
-- 未选择 Brain 时，CLI Deck 会保留当前 objective 并弹出创建 Brain 对话框，避免把用户原始对话误派成 worker 任务。
+- 未选择 Brain 时，普通聊天 objective 会保留并弹出创建 Brain 对话框；开发 objective 不依赖 Brain。
 - Auto dispatch 开启时，Dispatcher 自动选择可用 worker 并通过 Worker Adapter 派发任务。
 - 发给 Brain 的 prompt 会压缩为单行普通输入并单独发送 Enter；调度说明必须保持短文本，避免污染普通对话或卡住 TUI 输入。
 - Memory 的 frequent commands 会过滤 CLI Deck 注入的 objective / command / plan / result prompt，避免调度文本出现在 Common commands。

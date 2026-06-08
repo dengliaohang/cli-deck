@@ -466,6 +466,19 @@ function retryTestTask(task) {
   task.blockedReason = '';
 }
 
+function chooseObjectiveRoute(objective, liveSessionCount, hasBrain) {
+  if (isDevelopmentObjective(objective)) {
+    return 'worker_task';
+  }
+  if (hasBrain) {
+    return 'brain_chat';
+  }
+  if (liveSessionCount === 0) {
+    return 'create_brain';
+  }
+  return 'create_brain';
+}
+
 const presets = parsePresetsText('Codex | codex --model gpt-5\nClaude | claude "hello world"\nopencode');
 assert.deepEqual(presets, [
   { name: 'Codex', command: 'codex', args: ['--model', 'gpt-5'] },
@@ -503,6 +516,9 @@ assert.equal(findTestSessionForTarget(workerSessions, 'Brain codex', 'implement'
 assert.equal(isDevelopmentObjective('编写一个hello程序'), true);
 assert.equal(isDevelopmentObjective('fix paste handling'), true);
 assert.equal(isDevelopmentObjective('介绍一下你自己'), false);
+assert.equal(chooseObjectiveRoute('编写一个hello程序', 0, false), 'worker_task');
+assert.equal(chooseObjectiveRoute('介绍一下你自己', 0, false), 'create_brain');
+assert.equal(chooseObjectiveRoute('介绍一下你自己', 1, true), 'brain_chat');
 const parsedResult = parseResultBlock(`
 CLI_DECK_RESULT_ACTUAL_START
 task_id: task-1

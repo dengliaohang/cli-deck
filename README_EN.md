@@ -10,7 +10,7 @@ CLI Deck is an Electron desktop workspace for running and managing multiple AI C
 - Automatically tiles multiple sessions, which is useful when running several Codex / Claude / OpenCode tasks in parallel.
 - Supports custom command, arguments, and working directory.
 - Lets you decide whether each new session is recorded in Memory, which is useful for temporary or sensitive sessions.
-- Orchestrator: lets you choose or create one AI CLI as the swarm brain; the brain can emit `CLI_DECK_COMMAND_ACTUAL` blocks to dispatch, cancel, retry, request status, or message a worker, and worker results are reported back to the brain for the next scheduling step.
+- Orchestrator: development tasks enter the Task Board and dispatch to workers; the Brain only plans and receives status, and is excluded from the default worker pool.
 - Session titles automatically include the tail of the current path, for example `Codex — workspace/tools`; long paths keep only the last two segments.
 - Session actions: restart, duplicate, rename, copy command, open cwd, and close stopped.
 - Local memory layer:

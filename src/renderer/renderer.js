@@ -836,6 +836,8 @@ function dispatchTaskToSession(task, session, adapterName = 'pty') {
   if (!run) {
     return false;
   }
+  setActiveSession(session.id);
+  setStatus(`Dispatching ${task.id} to ${session.title}`);
   adapter.dispatch(task, session);
   addOrchestratorMessage('dispatch', `${task.id} -> ${session.title} via ${adapter.label}`, {
     taskId: task.id,
@@ -1269,37 +1271,30 @@ function submitSwarmObjective(value) {
   }
   elements.orchestratorGoalInput.value = '';
 
+  if (isDevelopmentObjective(objective)) {
+    const task = createSwarmTask(objective, 'implement');
+    state.orchestrator.tasks.unshift(task);
+    addOrchestratorMessage('objective', `Queued implement task from objective: ${objective}`, { taskId: task.id });
+    dispatchTask(task.id);
+    if (task.status === 'running') {
+      sendStatusToBrain('objective dispatch');
+    }
+    return;
+  }
+
   const liveSessions = getLiveSessions();
   if (liveSessions.length === 0) {
     state.orchestrator.pendingBrainObjective = objective;
     openBrainDialog();
-    addOrchestratorMessage('brain', 'No CLI sessions. Create a swarm brain first.');
+    addOrchestratorMessage('brain', 'No CLI sessions. Create a swarm brain for chat objectives.');
     return;
   }
 
   const brain = state.sessions.get(state.orchestrator.brainSessionId);
   if (brain && !brain.exited) {
-    if (isDevelopmentObjective(objective)) {
-      const task = createSwarmTask(objective, 'implement');
-      state.orchestrator.tasks.unshift(task);
-      addOrchestratorMessage('objective', `Queued implement task from objective: ${objective}`, { taskId: task.id });
-      dispatchTask(task.id);
-      if (task.status === 'running') {
-        sendStatusToBrain('objective dispatch');
-      }
-      return;
-    }
     submitBrainPrompt(brain.id, buildBrainObjectivePrompt(objective));
     setActiveSession(brain.id);
     addOrchestratorMessage('brain', `Sent objective to brain terminal: ${brain.title}`);
-    return;
-  }
-
-  if (isDevelopmentObjective(objective)) {
-    const task = createSwarmTask(objective, 'implement');
-    state.orchestrator.tasks.unshift(task);
-    addOrchestratorMessage('objective', `No brain selected. Queued implement task: ${objective}`, { taskId: task.id });
-    dispatchTask(task.id);
     return;
   }
 
