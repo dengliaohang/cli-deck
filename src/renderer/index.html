@@ -10,62 +10,66 @@
   <body>
     <div class="app-shell">
       <aside class="sidebar">
-        <div class="brand">
-          <div class="brand-mark">CD</div>
-          <div>
-            <h1>CLI Deck</h1>
-            <p>AI CLI workspace</p>
+        <div class="sidebar-header">
+          <div class="brand">
+            <div class="brand-mark">CD</div>
+            <div>
+              <h1>CLI Deck</h1>
+              <p>AI CLI workspace</p>
+            </div>
+          </div>
+
+          <div class="sidebar-actions">
+            <button class="primary-button" id="new-session-button" type="button">New Session</button>
+            <button class="ghost-button" id="settings-button" type="button">Settings</button>
           </div>
         </div>
 
-        <div class="sidebar-actions">
-          <button class="primary-button" id="new-session-button" type="button">New Session</button>
-          <button class="ghost-button" id="settings-button" type="button">Settings</button>
+        <div class="sidebar-content">
+          <section class="panel compact-panel">
+            <h2>Sessions</h2>
+            <div class="session-list" id="session-list"></div>
+          </section>
+
+          <section class="panel compact-panel">
+            <h2>Presets</h2>
+            <div class="preset-list" id="preset-list"></div>
+          </section>
+
+          <section class="panel orchestrator-panel">
+            <div class="panel-title-row">
+              <h2>Orchestrator</h2>
+              <div class="orchestrator-controls">
+                <select id="orchestrator-brain"></select>
+                <label class="mini-toggle">
+                  <input id="orchestrator-auto-dispatch" type="checkbox" checked />
+                  <span>Auto</span>
+                </label>
+              </div>
+            </div>
+            <div class="orchestrator-card" id="orchestrator-card">
+              <form class="orchestrator-form" id="orchestrator-form">
+                <textarea id="orchestrator-goal" spellcheck="false" placeholder="Describe the swarm objective"></textarea>
+                <button class="primary-button" type="submit">Dispatch</button>
+              </form>
+              <div class="orchestrator-queue" id="orchestrator-queue"></div>
+              <div class="orchestrator-log" id="orchestrator-log"></div>
+            </div>
+          </section>
+
+          <section class="panel memory-panel">
+            <div class="panel-title-row">
+              <h2>Memory</h2>
+              <div class="memory-tabs" role="tablist" aria-label="Memory view">
+                <button class="memory-tab active" id="memory-current-button" type="button">Current</button>
+                <button class="memory-tab" id="memory-history-button" type="button">History</button>
+              </div>
+            </div>
+            <div class="memory-card" id="memory-card">
+              <p class="memory-empty">Start or select a session to view project memory.</p>
+            </div>
+          </section>
         </div>
-
-        <section class="panel">
-          <h2>Sessions</h2>
-          <div class="session-list" id="session-list"></div>
-        </section>
-
-        <section class="panel">
-          <h2>Presets</h2>
-          <div class="preset-list" id="preset-list"></div>
-        </section>
-
-        <section class="panel orchestrator-panel">
-          <div class="panel-title-row">
-            <h2>Orchestrator</h2>
-            <div class="orchestrator-controls">
-              <select id="orchestrator-brain"></select>
-              <label class="mini-toggle">
-                <input id="orchestrator-auto-dispatch" type="checkbox" checked />
-                <span>Auto</span>
-              </label>
-            </div>
-          </div>
-          <div class="orchestrator-card" id="orchestrator-card">
-            <form class="orchestrator-form" id="orchestrator-form">
-              <textarea id="orchestrator-goal" spellcheck="false" placeholder="Describe the swarm objective"></textarea>
-              <button class="primary-button" type="submit">Dispatch</button>
-            </form>
-            <div class="orchestrator-queue" id="orchestrator-queue"></div>
-            <div class="orchestrator-log" id="orchestrator-log"></div>
-          </div>
-        </section>
-
-        <section class="panel memory-panel">
-          <div class="panel-title-row">
-            <h2>Memory</h2>
-            <div class="memory-tabs" role="tablist" aria-label="Memory view">
-              <button class="memory-tab active" id="memory-current-button" type="button">Current</button>
-              <button class="memory-tab" id="memory-history-button" type="button">History</button>
-            </div>
-          </div>
-          <div class="memory-card" id="memory-card">
-            <p class="memory-empty">Start or select a session to view project memory.</p>
-          </div>
-        </section>
       </aside>
 
       <main class="workspace">
