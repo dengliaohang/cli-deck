@@ -119,8 +119,10 @@ MVP 能力：
   - Claude: review / plan / research
   - OpenCode: implement / test
 - Custom: custom
-- 用户输入 swarm objective 后，开发 / 构建 / 测试 / 复核类目标由 CLI Deck 直接创建 worker task 并按能力派发；即使当前没有任何 CLI，也优先弹出 worker 创建对话框。
+- 用户输入 swarm objective 后，开发 / 构建 / 测试 / 复核类目标由 CLI Deck 直接创建 worker task 并按能力派发；即使当前没有任何可见 CLI，也可以由 headless worker 执行。
 - 普通聊天目标才发送给 Brain session；如果没有 Brain，才弹出 Brain 创建对话框。
+- 内置 headless `Codex Exec` worker，能力为 implement / test / review，默认使用 `codex.cmd exec` 非交互执行任务。
+- PTY prompt adapter 保留为兼容 fallback，不作为长期主控制面。
 - task 状态：`ready` / `running` / `blocked` / `done` / `cancelled` / `archived`。
 - 每次派发创建 run，记录 run id、worker session、adapter、attempt、result、error。
 - Task Board 持久化到 Electron `userData/orchestrator-board.json`，记录 tasks / runs / events / next ids。

@@ -110,6 +110,20 @@ const terminalTheme = {
   white: '#d9e2ec'
 };
 
+const headlessWorkers = [
+  {
+    id: 'headless-codex-exec',
+    title: 'Codex Exec',
+    command: 'codex.cmd exec',
+    cwd: '',
+    exited: false,
+    headless: true,
+    adapter: 'codexExec',
+    capabilities: ['implement', 'test', 'review'],
+    orchestratorRole: 'worker'
+  }
+];
+
 function splitArgs(value) {
   const result = [];
   const pattern = /"([^"]*)"|'([^']*)'|[^\s]+/g;
@@ -848,6 +862,13 @@ function getLiveSessions() {
   return Array.from(state.sessions.values()).filter((session) => !session.exited);
 }
 
+function getHeadlessWorkers() {
+  return headlessWorkers.map((worker) => ({
+    ...worker,
+    cwd: state.defaultCwd || worker.cwd
+  }));
+}
+
 function getLiveBrainSession() {
   const brain = state.sessions.get(state.orchestrator.brainSessionId);
   return brain && !brain.exited ? brain : null;
@@ -855,7 +876,10 @@ function getLiveBrainSession() {
 
 function getLiveWorkerSessions() {
   const brain = getLiveBrainSession();
-  return getLiveSessions().filter((session) => session.id !== brain?.id && session.orchestratorRole !== 'brain');
+  return [
+    ...getHeadlessWorkers(),
+    ...getLiveSessions().filter((session) => session.id !== brain?.id && session.orchestratorRole !== 'brain')
+  ];
 }
 
 function findSessionForCapability(capability) {
@@ -889,6 +913,30 @@ function findSessionForTarget(target, capability = '') {
 }
 
 const workerAdapters = {
+  codexExec: {
+    label: 'Codex exec',
+    dispatch(task, session) {
+      const prompt = buildWorkerPrompt(task, session);
+      window.cliDeck
+        .runCodexExecTask({
+          cwd: session.cwd || state.defaultCwd,
+          prompt,
+          timeoutMs: 30 * 60 * 1000
+        })
+        .then((output) => handleHeadlessWorkerOutput(session, task, output))
+        .catch((error) =>
+          handleHeadlessWorkerOutput(session, task, {
+            exitCode: -1,
+            signal: '',
+            stdout: '',
+            stderr: '',
+            error: error.message,
+            durationMs: 0
+          })
+        );
+      return true;
+    }
+  },
   pty: {
     label: 'PTY prompt',
     dispatch(task, session) {
@@ -899,12 +947,15 @@ const workerAdapters = {
 };
 
 function dispatchTaskToSession(task, session, adapterName = 'pty') {
-  const adapter = workerAdapters[adapterName] || workerAdapters.pty;
-  const run = claimTaskForSession(task, session, adapterName);
+  const resolvedAdapterName = session.adapter || adapterName;
+  const adapter = workerAdapters[resolvedAdapterName] || workerAdapters.pty;
+  const run = claimTaskForSession(task, session, resolvedAdapterName);
   if (!run) {
     return false;
   }
-  setActiveSession(session.id);
+  if (!session.headless) {
+    setActiveSession(session.id);
+  }
   setStatus(`Dispatching ${task.id} to ${session.title}`);
   adapter.dispatch(task, session);
   addOrchestratorMessage('dispatch', `${task.id} -> ${session.title} via ${adapter.label}`, {
@@ -1199,6 +1250,37 @@ function consumeResultBlocks(session, data) {
   }
 
   return events;
+}
+
+function summarizeHeadlessOutput(output) {
+  const text = [output?.stdout, output?.stderr, output?.error].filter(Boolean).join('\n').trim();
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  return lines.slice(-8).join(' | ').slice(0, 500) || 'No output';
+}
+
+function handleHeadlessWorkerOutput(session, task, output) {
+  const combined = [output?.stdout || '', output?.stderr || ''].join('\n');
+  const parsed = consumeResultBlocks({ orchestratorBuffer: '' }, combined).find((event) => event.type === 'result');
+  const result =
+    parsed?.result || {
+      taskId: task.id,
+      status: Number(output?.exitCode) === 0 ? 'done' : 'blocked',
+      summary:
+        Number(output?.exitCode) === 0
+          ? summarizeHeadlessOutput(output)
+          : output?.error || summarizeHeadlessOutput(output),
+      details: [
+        `adapter: ${session.adapter || 'codexExec'}`,
+        `exit_code: ${Number(output?.exitCode ?? -1)}`,
+        `duration_ms: ${Number(output?.durationMs || 0)}`
+      ],
+      next: Number(output?.exitCode) === 0 ? 'none' : 'Inspect worker output and retry'
+    };
+
+  handleWorkerResult(session, result);
 }
 
 function buildSwarmStatusSummary() {
@@ -1513,14 +1595,20 @@ function renderOrchestrator() {
   renderBrainSelect(liveSessions);
   const roster = document.createElement('div');
   roster.className = 'orchestrator-roster';
-  if (liveSessions.length === 0) {
+  const rosterSessions = [...getHeadlessWorkers(), ...liveSessions];
+  if (rosterSessions.length === 0) {
     appendText(roster, 'p', 'memory-empty', 'Start CLI sessions to create Brain and workers.');
   } else {
-    for (const session of liveSessions) {
+    for (const session of rosterSessions) {
       const row = document.createElement('div');
       row.className = session.id === state.orchestrator.brainSessionId ? 'orchestrator-worker brain-worker' : 'orchestrator-worker';
       appendText(row, 'span', null, session.title);
-      appendText(row, 'span', null, session.id === state.orchestrator.brainSessionId ? 'brain' : formatCapabilities(session.capabilities));
+      const role = session.headless
+        ? `${formatCapabilities(session.capabilities)} / headless`
+        : session.id === state.orchestrator.brainSessionId
+          ? 'brain'
+          : formatCapabilities(session.capabilities);
+      appendText(row, 'span', null, role);
       roster.append(row);
     }
     if (workers.length === 0) {

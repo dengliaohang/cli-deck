@@ -2,6 +2,7 @@
 const os = require('node:os');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
+const { spawn } = require('node:child_process');
 const { app, BrowserWindow, clipboard, dialog, ipcMain, shell } = require('electron');
 const Store = require('electron-store');
 const pty = require('@lydell/node-pty');
@@ -194,6 +195,94 @@ function saveOrchestratorBoard(board = {}) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, `${JSON.stringify(content, null, 2)}\n`, 'utf8');
   return content;
+}
+
+function limitText(value, maxLength = 60000) {
+  const text = String(value || '');
+  return text.length > maxLength ? text.slice(-maxLength) : text;
+}
+
+function getCodexExecutable() {
+  return process.platform === 'win32' ? 'codex.cmd' : 'codex';
+}
+
+function runCodexExecTask(options = {}) {
+  const cwd = normalizeCwd(options.cwd || os.homedir());
+  const prompt = String(options.prompt || '').trim();
+  if (!prompt) {
+    throw new Error('Task prompt is required.');
+  }
+
+  const args = [
+    'exec',
+    '--cd',
+    cwd,
+    '--sandbox',
+    'workspace-write',
+    '--skip-git-repo-check',
+    '--color',
+    'never',
+    '-'
+  ];
+  const startedAt = Date.now();
+
+  return new Promise((resolve) => {
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+    let proc;
+
+    const finish = (payload) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      resolve({
+        ...payload,
+        stdout: limitText(stdout),
+        stderr: limitText(stderr),
+        durationMs: Date.now() - startedAt
+      });
+    };
+
+    try {
+      proc = spawn(getCodexExecutable(), args, {
+        cwd,
+        windowsHide: true,
+        env: { ...process.env }
+      });
+    } catch (error) {
+      finish({ exitCode: -1, signal: '', error: error.message });
+      return;
+    }
+
+    const timeoutMs = Math.max(30000, Number(options.timeoutMs) || 30 * 60 * 1000);
+    const timeout = setTimeout(() => {
+      try {
+        proc.kill();
+      } catch {
+        // ignore kill failures; close/error will finish the run.
+      }
+      finish({ exitCode: -1, signal: 'timeout', error: `codex exec timed out after ${timeoutMs}ms` });
+    }, timeoutMs);
+
+    proc.stdout.on('data', (chunk) => {
+      stdout = limitText(`${stdout}${chunk.toString()}`);
+    });
+    proc.stderr.on('data', (chunk) => {
+      stderr = limitText(`${stderr}${chunk.toString()}`);
+    });
+    proc.on('error', (error) => {
+      clearTimeout(timeout);
+      finish({ exitCode: -1, signal: '', error: error.message });
+    });
+    proc.on('close', (exitCode, signal) => {
+      clearTimeout(timeout);
+      finish({ exitCode: Number(exitCode ?? 0), signal: signal || '', error: '' });
+    });
+
+    proc.stdin.end(prompt);
+  });
 }
 
 function getMemoryConfig() {
@@ -1193,6 +1282,8 @@ ipcMain.handle('memory:cleanupRawLogs', () => cleanupExpiredRawLogs());
 ipcMain.handle('orchestrator:getBoard', () => loadOrchestratorBoard());
 
 ipcMain.handle('orchestrator:saveBoard', (_event, board) => saveOrchestratorBoard(board));
+
+ipcMain.handle('orchestrator:runCodexExecTask', (_event, options) => runCodexExecTask(options));
 
 ipcMain.handle('terminal:create', (_event, config) => {
   if (!config?.command || typeof config.command !== 'string') {

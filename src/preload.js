@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('cliDeck', {
   cleanupRawLogs: () => ipcRenderer.invoke('memory:cleanupRawLogs'),
   getOrchestratorBoard: () => ipcRenderer.invoke('orchestrator:getBoard'),
   saveOrchestratorBoard: (board) => ipcRenderer.invoke('orchestrator:saveBoard', board),
+  runCodexExecTask: (options) => ipcRenderer.invoke('orchestrator:runCodexExecTask', options),
   createTerminal: (config) => ipcRenderer.invoke('terminal:create', config),
   writeTerminal: (id, data) => ipcRenderer.send('terminal:input', { id, data }),
   resizeTerminal: (id, cols, rows) => ipcRenderer.send('terminal:resize', { id, cols, rows }),

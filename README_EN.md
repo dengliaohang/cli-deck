@@ -135,7 +135,9 @@ Default policy:
 
 The Orchestrator now treats CLI Deck's internal Task Board as the source of truth: Dispatch creates a task, the Dispatcher selects a worker by capability, and a Worker Adapter delivers the task to the concrete CLI. The current default adapter is the PTY prompt adapter for interactive Codex / Claude / OpenCode TUIs; future adapters can target Codex app-server or non-interactive commands.
 
-The Brain session is only a planner and status recipient. It is excluded from the default worker pool, so development tasks require a non-Brain worker session. If only a Brain exists, CLI Deck prompts you to create a worker instead of sending the task back to the Brain.
+The Brain session is only a planner and status recipient. It is excluded from the default worker pool, so development tasks require a non-Brain worker. If the headless adapter is unavailable, CLI Deck prompts you to create a worker instead of sending the task back to the Brain.
+
+CLI Deck includes a headless `Codex Exec` worker by default. Development tasks run through `codex.cmd exec` non-interactively; CLI Deck captures stdout/stderr/exit code and updates the Task Board. PTY workers are now compatibility fallback.
 
 Task states include `ready`, `running`, `blocked`, `done`, and `cancelled`. Each dispatch creates a run with attempts, assignee, run id, and event history. If a worker exits before returning a result, CLI Deck marks the running task as `blocked` so it can be retried explicitly.
 
