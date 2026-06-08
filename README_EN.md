@@ -141,6 +141,8 @@ Task states include `ready`, `running`, `blocked`, `done`, and `cancelled`. Each
 
 The Task Board is persisted under Electron `userData` as `orchestrator-board.json`. After app restart, tasks/runs/events are restored; previously `running` tasks are reclaimed as `blocked` so work does not disappear silently.
 
+When Auto is enabled, the Dispatcher continuously scans the board. `ready` tasks are assigned by capability; tasks blocked by "no worker" or app restart are automatically retried once a matching worker appears. Tasks blocked for human decisions are not retried automatically.
+
 For coding, build, test, or review objectives, Dispatch first creates a worker task directly in CLI Deck and assigns it by capability; worker results are then reported back to the Brain for follow-up scheduling. Plain chat objectives are sent to the Brain directly.
 
 Example dispatch command:

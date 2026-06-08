@@ -125,6 +125,9 @@ MVP 能力：
 - 每次派发创建 run，记录 run id、worker session、adapter、attempt、result、error。
 - Task Board 持久化到 Electron `userData/orchestrator-board.json`，记录 tasks / runs / events / next ids。
 - 应用启动时恢复 Task Board；上次处于 `running` 的 task 会被 reclaim 为 `blocked` 并记录 event。
+- Dispatcher 在 Auto 开启时每 2 秒 tick 一次，扫描 dispatchable tasks。
+- `ready` task 会按 capability 自动 claim 并派发；因 no worker / app restart 进入 `blocked` 的 task 会在 worker 可用后自动 retry。
+- 需要人工决策的 `blocked` task 不自动 retry，避免调度器自旋。
 - Dispatcher 默认排除 Brain session；只有 `target: brain` 或普通聊天目标才会写入 Brain。
 - 如果没有 worker，开发任务会进入 `blocked`，并引导用户创建 worker session 后自动 retry/dispatch。
 - worker session 退出但 task 未完成时，CLI Deck 把 task 标记为 `blocked`，并记录 reclaim event。

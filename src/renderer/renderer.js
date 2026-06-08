@@ -28,6 +28,9 @@ const state = {
     messages: [],
     autoDispatch: true,
     boardLoaded: false,
+    dispatcherTimer: null,
+    dispatcherRunning: false,
+    lastDispatcherTick: 0,
     saveTimer: null,
     nextTaskNumber: 1,
     nextRunNumber: 1,
@@ -935,16 +938,62 @@ function dispatchTask(taskId, targetSessionId = '') {
   dispatchTaskToSession(task, session);
 }
 
-function dispatchQueuedTasks() {
+function canDispatcherRetryBlockedTask(task) {
+  const reason = String(task?.blockedReason || '').toLowerCase();
+  return (
+    task?.status === 'blocked' &&
+    (reason.includes('no live cli session') ||
+      reason.includes('no worker') ||
+      reason.includes('app restarted before worker reported a result'))
+  );
+}
+
+function getDispatchableTasks() {
+  return state.orchestrator.tasks.filter((task) => task.status === 'ready' || canDispatcherRetryBlockedTask(task));
+}
+
+function runDispatcherTick(reason = 'tick') {
   if (!state.orchestrator.autoDispatch) {
     return;
   }
-  for (const task of state.orchestrator.tasks) {
-    if (task.status === 'ready') {
-      dispatchTask(task.id);
-      return;
-    }
+  if (state.orchestrator.dispatcherRunning) {
+    return;
   }
+  state.orchestrator.dispatcherRunning = true;
+  state.orchestrator.lastDispatcherTick = Date.now();
+  try {
+    for (const task of getDispatchableTasks()) {
+      const session = findSessionForCapability(task.capability);
+      if (!session) {
+        if (task.status === 'ready') {
+          task.status = 'blocked';
+          task.blockedReason = `No worker can run ${task.capability}.`;
+          task.updatedAt = Date.now();
+          state.orchestrator.pendingWorkerTaskId = task.id;
+          addTaskEvent('blocked', task.id, { reason: task.blockedReason, dispatcher: reason });
+          addOrchestratorMessage('blocked', `Dispatcher blocked ${task.id}: no worker for ${task.capability}`);
+          openWorkerDialogForTask(task);
+        }
+        continue;
+      }
+      if (task.status === 'blocked') {
+        retryTask(task);
+      }
+      dispatchTaskToSession(task, session);
+      break;
+    }
+  } finally {
+    state.orchestrator.dispatcherRunning = false;
+  }
+}
+
+function dispatchQueuedTasks() {
+  runDispatcherTick('event');
+}
+
+function startDispatcherLoop() {
+  window.clearInterval(state.orchestrator.dispatcherTimer);
+  state.orchestrator.dispatcherTimer = window.setInterval(() => runDispatcherTick('interval'), 2000);
 }
 
 function chooseNextCapability(result, completedTask = null) {
@@ -1993,6 +2042,10 @@ function getPreferredWorkerPreset(capability = 'implement') {
 }
 
 function openWorkerDialogForTask(task) {
+  if (!task || state.orchestrator.pendingWorkerTaskId === task.id && elements.dialog.open) {
+    return;
+  }
+  state.orchestrator.pendingWorkerTaskId = task.id;
   const preset = getPreferredWorkerPreset(task?.capability || 'implement');
   openDialog({
     name: `Worker ${task?.capability || 'implement'}`,
@@ -2297,9 +2350,14 @@ window.cliDeck.getConfig().then((config) => {
   setMemoryMode('history');
   window.cliDeck
     .getOrchestratorBoard()
-    .then((board) => restoreBoard(board))
+    .then((board) => {
+      restoreBoard(board);
+      startDispatcherLoop();
+      runDispatcherTick('startup');
+    })
     .catch((error) => {
       state.orchestrator.boardLoaded = true;
       setStatus(`Task board load failed: ${error.message}`);
+      startDispatcherLoop();
     });
 });

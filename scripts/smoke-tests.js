@@ -504,6 +504,20 @@ function restoreTestBoard(board = {}) {
   return restored;
 }
 
+function canTestDispatcherRetryBlockedTask(task) {
+  const reason = String(task?.blockedReason || '').toLowerCase();
+  return (
+    task?.status === 'blocked' &&
+    (reason.includes('no live cli session') ||
+      reason.includes('no worker') ||
+      reason.includes('app restarted before worker reported a result'))
+  );
+}
+
+function getTestDispatchableTasks(tasks) {
+  return tasks.filter((task) => task.status === 'ready' || canTestDispatcherRetryBlockedTask(task));
+}
+
 const presets = parsePresetsText('Codex | codex --model gpt-5\nClaude | claude "hello world"\nopencode');
 assert.deepEqual(presets, [
   { name: 'Codex', command: 'codex', args: ['--model', 'gpt-5'] },
@@ -639,6 +653,15 @@ assert.equal(restoredBoard.tasks[0].status, 'blocked');
 assert.equal(restoredBoard.tasks[0].currentRunId, null);
 assert.equal(restoredBoard.runs[0].status, 'blocked');
 assert.equal(restoredBoard.events[0].kind, 'reclaimed');
+assert.deepEqual(
+  getTestDispatchableTasks([
+    { id: 'ready', status: 'ready' },
+    { id: 'blocked-worker', status: 'blocked', blockedReason: 'No worker can run implement.' },
+    { id: 'blocked-human', status: 'blocked', blockedReason: 'Need product decision.' },
+    { id: 'running', status: 'running' }
+  ]).map((item) => item.id),
+  ['ready', 'blocked-worker']
+);
 
 assert.equal(classifyFailureCategory(['npm ERR! command not found']), 'command');
 assert.equal(classifyFailureCategory(['Traceback most recent call last']), 'exception');
