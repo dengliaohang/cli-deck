@@ -133,7 +133,7 @@ Default policy:
 
 ## Orchestrator Swarm Scheduling
 
-Dispatch sends the user objective plus a short scheduling instruction to the selected Brain CLI. For coding, build, test, or review objectives, the Brain should first emit a complete `CLI_DECK_COMMAND_ACTUAL` or `CLI_DECK_PLAN_ACTUAL` block so CLI Deck can dispatch workers.
+For coding, build, test, or review objectives, Dispatch first creates a worker task directly in CLI Deck and assigns it by capability; worker results are then reported back to the Brain for follow-up scheduling. Plain chat objectives are sent to the Brain directly.
 
 Example dispatch command:
 

@@ -594,6 +594,11 @@ function createSwarmTask(title, capability = 'implement', sourceTaskId = null) {
   };
 }
 
+function isDevelopmentObjective(value) {
+  const text = String(value || '').toLowerCase();
+  return /(\b(code|program|script|app|feature|implement|build|test|review|fix|debug|refactor)\b|编写|写一|写个|程序|代码|实现|开发|修复|测试|构建|重构|复核)/i.test(text);
+}
+
 function submitTypedPrompt(sessionId, prompt) {
   window.cliDeck.writeTerminal(sessionId, String(prompt || ''));
   window.setTimeout(() => window.cliDeck.writeTerminal(sessionId, '\r'), 80);
@@ -1122,9 +1127,25 @@ function submitSwarmObjective(value) {
 
   const brain = state.sessions.get(state.orchestrator.brainSessionId);
   if (brain && !brain.exited) {
+    if (isDevelopmentObjective(objective)) {
+      const task = createSwarmTask(objective, 'implement');
+      state.orchestrator.tasks.unshift(task);
+      addOrchestratorMessage('objective', `Queued implement task from objective: ${objective}`, { taskId: task.id });
+      dispatchTask(task.id);
+      sendStatusToBrain('objective dispatch');
+      return;
+    }
     submitBrainPrompt(brain.id, buildBrainObjectivePrompt(objective));
     setActiveSession(brain.id);
     addOrchestratorMessage('brain', `Sent objective to brain terminal: ${brain.title}`);
+    return;
+  }
+
+  if (isDevelopmentObjective(objective)) {
+    const task = createSwarmTask(objective, 'implement');
+    state.orchestrator.tasks.unshift(task);
+    addOrchestratorMessage('objective', `No brain selected. Queued implement task: ${objective}`, { taskId: task.id });
+    dispatchTask(task.id);
     return;
   }
 

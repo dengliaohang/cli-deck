@@ -218,6 +218,11 @@ function inferCapabilities(command) {
   return ['custom'];
 }
 
+function isDevelopmentObjective(value) {
+  const text = String(value || '').toLowerCase();
+  return /(\b(code|program|script|app|feature|implement|build|test|review|fix|debug|refactor)\b|编写|写一|写个|程序|代码|实现|开发|修复|测试|构建|重构|复核)/i.test(text);
+}
+
 function parseResultBlock(block) {
   const lines = block
     .split(/\r?\n/)
@@ -395,6 +400,9 @@ assert.equal(isTextPasteShortcut({ key: 'c', ctrlKey: true, altKey: false, metaK
 assert.deepEqual(inferCapabilities('codex'), ['implement', 'test', 'review']);
 assert.deepEqual(inferCapabilities('claude'), ['review', 'plan', 'research']);
 assert.deepEqual(inferCapabilities('opencode'), ['implement', 'test']);
+assert.equal(isDevelopmentObjective('编写一个hello程序'), true);
+assert.equal(isDevelopmentObjective('fix paste handling'), true);
+assert.equal(isDevelopmentObjective('介绍一下你自己'), false);
 const parsedResult = parseResultBlock(`
 CLI_DECK_RESULT_ACTUAL_START
 task_id: task-1
