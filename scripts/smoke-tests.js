@@ -375,6 +375,62 @@ function chooseNextCapability(result, completedTask = null) {
   return '';
 }
 
+function createTestTask(board, title, capability = 'implement') {
+  const task = {
+    id: `task-${board.nextTaskNumber++}`,
+    title: String(title || '').trim(),
+    capability,
+    status: 'ready',
+    assignedSessionId: null,
+    currentRunId: null,
+    attempts: 0,
+    result: null,
+    blockedReason: ''
+  };
+  board.tasks.unshift(task);
+  return task;
+}
+
+function claimTestTask(board, task, session, adapter = 'pty') {
+  if (!task || !session || !['ready', 'blocked'].includes(task.status)) {
+    return null;
+  }
+  const run = {
+    id: `run-${board.nextRunNumber++}`,
+    taskId: task.id,
+    sessionId: session.id,
+    adapter,
+    status: 'running'
+  };
+  board.runs.unshift(run);
+  task.status = 'running';
+  task.assignedSessionId = session.id;
+  task.currentRunId = run.id;
+  task.attempts += 1;
+  task.blockedReason = '';
+  return run;
+}
+
+function finishTestTask(board, task, result, status = 'done') {
+  const run = board.runs.find((item) => item.id === task.currentRunId);
+  if (run) {
+    run.status = status;
+    run.result = result;
+  }
+  task.status = status;
+  task.result = result;
+  task.currentRunId = null;
+  task.blockedReason = status === 'blocked' ? result?.summary || 'Worker blocked' : '';
+}
+
+function retryTestTask(task) {
+  task.status = 'ready';
+  task.assignedSessionId = null;
+  task.currentRunId = null;
+  task.result = null;
+  task.blockedReason = '';
+}
+
 const presets = parsePresetsText('Codex | codex --model gpt-5\nClaude | claude "hello world"\nopencode');
 assert.deepEqual(presets, [
   { name: 'Codex', command: 'codex', args: ['--model', 'gpt-5'] },
@@ -473,6 +529,20 @@ assert.equal(chooseNextCapability({ status: 'done' }, { capability: 'implement' 
 assert.equal(chooseNextCapability({ status: 'done' }, { capability: 'review' }), 'test');
 assert.equal(chooseNextCapability({ status: 'blocked' }), 'research');
 assert.equal(chooseNextCapability({ status: 'needs_test' }), 'test');
+
+const board = { tasks: [], runs: [], nextTaskNumber: 1, nextRunNumber: 1 };
+const task = createTestTask(board, 'build dispatcher', 'implement');
+assert.equal(task.status, 'ready');
+const run = claimTestTask(board, task, { id: 'session-1' });
+assert.equal(run.id, 'run-1');
+assert.equal(task.status, 'running');
+assert.equal(task.attempts, 1);
+finishTestTask(board, task, { status: 'blocked', summary: 'missing worker' }, 'blocked');
+assert.equal(task.status, 'blocked');
+assert.equal(board.runs[0].status, 'blocked');
+retryTestTask(task);
+assert.equal(task.status, 'ready');
+assert.equal(task.currentRunId, null);
 
 assert.equal(classifyFailureCategory(['npm ERR! command not found']), 'command');
 assert.equal(classifyFailureCategory(['Traceback most recent call last']), 'exception');

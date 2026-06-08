@@ -100,9 +100,17 @@ History 支持：
 - 删除 project memory
 - 清理过期 raw logs
 
-### 4.4 Orchestrator 调度大脑
+### 4.4 Orchestrator 蜂群任务板
 
-Orchestrator 是面向多个 AI CLI session 的本地调度层。用户选择一个 AI CLI session 作为蜂群主脑负责规划任务，CLI Deck 作为执行中枢，根据 worker session 的工具类型推断能力，把任务派发给合适的 CLI worker，并解析 worker 输出的结果协议块。
+Orchestrator 是面向多个 AI CLI session 的本地调度层。CLI Deck 内部 Task Board 是事实源，Dispatcher 根据任务状态、依赖、worker 能力和运行结果推进任务；Brain session 是可选规划者，worker session 是执行者。
+
+设计原则：
+
+- 不把“向 TUI 粘贴提示词”作为长期核心控制面。PTY prompt 只是当前兼容 adapter。
+- Task Board 记录 task、run、event，UI、Brain、worker 结果都围绕这个状态机读写。
+- Dispatcher 负责 claim ready task、选择 worker、创建 run、处理 retry/block/cancel/reclaim。
+- Worker Adapter 隔离不同 CLI 工具：当前实现 `pty` adapter，后续可接 `codex app-server`、非交互命令、MCP/IPC 写回。
+- Brain 负责规划和建议，不直接拥有任务真实状态。CLI Deck 根据 worker result 和 task board 状态决定下一步。
 
 MVP 能力：
 
@@ -112,13 +120,17 @@ MVP 能力：
   - OpenCode: implement / test
 - Custom: custom
 - 用户输入 swarm objective 后，开发 / 构建 / 测试 / 复核类目标由 CLI Deck 直接创建 worker task 并按能力派发；普通聊天目标发送给 Brain session。
+- task 状态：`ready` / `running` / `blocked` / `done` / `cancelled` / `archived`。
+- 每次派发创建 run，记录 run id、worker session、adapter、attempt、result、error。
+- worker session 退出但 task 未完成时，CLI Deck 把 task 标记为 `blocked`，并记录 reclaim event。
+- UI 展示 worker roster、task board、run/attempt 摘要和事件流。
 - 如果没有任何 live CLI session，Dispatch 会弹出创建 Brain 的对话框，让用户选择 CLI 类型、工作目录和 Memory 选项；Brain 启动成功后继续处理刚才的 objective。
 - Brain 可接收普通聊天目标、worker result 和 swarm status；当 Brain 输出 `CLI_DECK_COMMAND_ACTUAL_START` / `CLI_DECK_COMMAND_ACTUAL_END` 或 `CLI_DECK_PLAN_ACTUAL_START` / `CLI_DECK_PLAN_ACTUAL_END` 协议块后，CLI Deck 执行后续调度动作。
 - 未选择 Brain 时，CLI Deck 会保留当前 objective 并弹出创建 Brain 对话框，避免把用户原始对话误派成 worker 任务。
-- Auto dispatch 开启时，自动选择可用 worker 并写入任务 prompt。
+- Auto dispatch 开启时，Dispatcher 自动选择可用 worker 并通过 Worker Adapter 派发任务。
 - 发给 Brain 的 prompt 会压缩为单行普通输入并单独发送 Enter；调度说明必须保持短文本，避免污染普通对话或卡住 TUI 输入。
 - Memory 的 frequent commands 会过滤 CLI Deck 注入的 objective / command / plan / result prompt，避免调度文本出现在 Common commands。
-- 发给 worker 的多行任务 prompt 使用 bracketed paste 包裹，再单独发送 Enter，适配 Codex / Claude 这类 TUI 的多行输入提交。
+- 当前 PTY adapter 发给 worker 的多行任务 prompt 使用 bracketed paste 包裹，再单独发送 Enter，适配 Codex / Claude 这类 TUI 的多行输入提交。
 - Brain command 支持 `dispatch` / `status` / `cancel` / `retry` / `message`。
 - `dispatch` command 可通过 `target` 指定 session id、session title、能力名或 `brain`；未指定时按 capability 自动选择 worker。
 - worker 完成后可输出 `CLI_DECK_RESULT_ACTUAL_START` / `CLI_DECK_RESULT_ACTUAL_END` 协议块触发结果处理。
@@ -170,7 +182,7 @@ CLI_DECK_COMMAND_ACTUAL_END
 - `dispatch`: 创建 task，并派发给 `target` 或匹配 `capability` 的 worker。必填 `task`，可选 `capability`、`target`。
 - `status`: CLI Deck 把 live sessions、Brain、task 列表写回 Brain terminal。
 - `cancel`: 把指定 `task_id` 标记为 `cancelled`，不会强杀已经运行的 CLI 进程。
-- `retry`: 把指定 `task_id` 重置为 queued 并重新派发。
+- `retry`: 把指定 `task_id` 重置为 `ready` 并重新派发。
 - `message`: 把 `message` 直接写入 `target` session。
 
 ## 5. 非目标
@@ -402,9 +414,9 @@ Orchestrator 面板在 sidebar 内展示调度目标、worker roster、任务队
 交互：
 
 - 选择 Brain session，输入 swarm objective 并 Dispatch。
-- Auto 开关控制是否自动派发 queued task。
+- Auto 开关控制是否自动派发 ready task。
 - worker roster 展示当前 live session 和推断能力。
-- Dispatch 按钮可手动派发单个 queued task。
+- Dispatch / Retry 按钮可手动派发单个 ready 或 blocked task。
 - Drop 按钮可丢弃任务。
 - 消息流展示 objective、dispatch、result、route、blocked 等事件。
 

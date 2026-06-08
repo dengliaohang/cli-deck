@@ -23,9 +23,12 @@ const state = {
   config: null,
   orchestrator: {
     tasks: [],
+    runs: [],
+    events: [],
     messages: [],
     autoDispatch: true,
     nextTaskNumber: 1,
+    nextRunNumber: 1,
     brainSessionId: '',
     pendingBrainObjective: ''
   }
@@ -581,17 +584,131 @@ function addOrchestratorMessage(kind, text, meta = {}) {
   renderOrchestrator();
 }
 
-function createSwarmTask(title, capability = 'implement', sourceTaskId = null) {
-  return {
-    id: `task-${state.orchestrator.nextTaskNumber++}`,
-    title: String(title || '').trim(),
-    capability,
-    sourceTaskId,
-    status: 'queued',
-    assignedSessionId: null,
-    result: null,
+function addTaskEvent(kind, taskId, payload = {}) {
+  const event = {
+    id: crypto.randomUUID(),
+    kind,
+    taskId,
+    payload,
     createdAt: Date.now()
   };
+  state.orchestrator.events.unshift(event);
+  state.orchestrator.events = state.orchestrator.events.slice(0, 200);
+  return event;
+}
+
+function createSwarmTask(title, capability = 'implement', sourceTaskId = null, options = {}) {
+  const task = {
+    id: `task-${state.orchestrator.nextTaskNumber++}`,
+    title: String(title || '').trim(),
+    body: String(options.body || '').trim(),
+    capability: capability || 'implement',
+    sourceTaskId,
+    status: options.status || 'ready',
+    assignedSessionId: null,
+    currentRunId: null,
+    attempts: 0,
+    result: null,
+    blockedReason: '',
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+  addTaskEvent('created', task.id, { capability: task.capability, sourceTaskId });
+  return task;
+}
+
+function createTaskRun(task, session, adapter = 'pty') {
+  const run = {
+    id: `run-${state.orchestrator.nextRunNumber++}`,
+    taskId: task.id,
+    sessionId: session.id,
+    adapter,
+    status: 'running',
+    startedAt: Date.now(),
+    endedAt: null,
+    lastHeartbeatAt: Date.now(),
+    result: null,
+    error: ''
+  };
+  state.orchestrator.runs.unshift(run);
+  state.orchestrator.runs = state.orchestrator.runs.slice(0, 200);
+  return run;
+}
+
+function getTaskRun(runId) {
+  return state.orchestrator.runs.find((run) => run.id === runId) || null;
+}
+
+function claimTaskForSession(task, session, adapter = 'pty') {
+  if (!task || !session || session.exited || !['ready', 'blocked'].includes(task.status)) {
+    return null;
+  }
+  const run = createTaskRun(task, session, adapter);
+  task.status = 'running';
+  task.assignedSessionId = session.id;
+  task.currentRunId = run.id;
+  task.attempts += 1;
+  task.updatedAt = Date.now();
+  task.blockedReason = '';
+  addTaskEvent('claimed', task.id, { runId: run.id, sessionId: session.id, adapter });
+  return run;
+}
+
+function finishTaskRun(task, result, status = 'done') {
+  const run = task?.currentRunId ? getTaskRun(task.currentRunId) : null;
+  if (run) {
+    run.status = status;
+    run.endedAt = Date.now();
+    run.result = result || null;
+  }
+  if (task) {
+    task.status = status;
+    task.result = result || null;
+    task.currentRunId = null;
+    task.blockedReason = status === 'blocked' ? result?.summary || result?.next || 'Worker blocked' : '';
+    task.updatedAt = Date.now();
+    addTaskEvent(status === 'blocked' ? 'blocked' : 'completed', task.id, {
+      runId: run?.id || '',
+      summary: result?.summary || ''
+    });
+  }
+}
+
+function retryTask(task) {
+  if (!task) {
+    return false;
+  }
+  task.status = 'ready';
+  task.assignedSessionId = null;
+  task.currentRunId = null;
+  task.result = null;
+  task.blockedReason = '';
+  task.updatedAt = Date.now();
+  addTaskEvent('retried', task.id);
+  return true;
+}
+
+function blockRunningTasksForSession(sessionId, reason) {
+  for (const task of state.orchestrator.tasks) {
+    if (task.status !== 'running' || task.assignedSessionId !== sessionId) {
+      continue;
+    }
+    const run = task.currentRunId ? getTaskRun(task.currentRunId) : null;
+    if (run) {
+      run.status = 'blocked';
+      run.endedAt = Date.now();
+      run.error = reason;
+    }
+    task.status = 'blocked';
+    task.currentRunId = null;
+    task.blockedReason = reason;
+    task.updatedAt = Date.now();
+    addTaskEvent('reclaimed', task.id, { reason, runId: run?.id || '' });
+    addOrchestratorMessage('blocked', `${task.id} blocked because worker exited: ${reason}`, {
+      taskId: task.id,
+      sessionId
+    });
+  }
 }
 
 function isDevelopmentObjective(value) {
@@ -636,17 +753,21 @@ function buildBrainObjectivePrompt(objective) {
 function buildWorkerPrompt(task, session) {
   return [
     '',
-    'CLI Deck swarm task',
+    'CLI Deck task board worker assignment',
     '',
     `Task ID: ${task.id}`,
+    `Run ID: ${task.currentRunId || 'pending'}`,
     `Required capability: ${task.capability}`,
     `Your session capabilities: ${formatCapabilities(session.capabilities)}`,
     '',
-    'Work on this task normally. When finished, report a CLI Deck result actual block.',
+    'Work on this task normally. When finished, report a CLI Deck result actual block so the task board can advance.',
     'The start marker is CLI_DECK_RESULT_ + ACTUAL_START; the end marker is CLI_DECK_RESULT_ + ACTUAL_END.',
     'Fields: task_id, status, summary, details, next.',
     'Allowed status values: done, blocked, needs_review, needs_test.',
     `Use task_id: ${task.id}`,
+    '',
+    'If you are blocked, report status: blocked with the concrete missing input.',
+    'If implementation is finished but needs human or peer review, report status: needs_review.',
     '',
     'Task:',
     task.title,
@@ -689,27 +810,46 @@ function findSessionForTarget(target, capability = '') {
   return capability ? findSessionForCapability(capability) : null;
 }
 
-function dispatchTaskToSession(task, session) {
-  if (!task || !session || session.exited) {
+const workerAdapters = {
+  pty: {
+    label: 'PTY prompt',
+    dispatch(task, session) {
+      pasteAndSubmitPrompt(session.id, buildWorkerPrompt(task, session));
+      return true;
+    }
+  }
+};
+
+function dispatchTaskToSession(task, session, adapterName = 'pty') {
+  const adapter = workerAdapters[adapterName] || workerAdapters.pty;
+  const run = claimTaskForSession(task, session, adapterName);
+  if (!run) {
     return false;
   }
-  task.status = 'running';
-  task.assignedSessionId = session.id;
-  pasteAndSubmitPrompt(session.id, buildWorkerPrompt(task, session));
-  addOrchestratorMessage('dispatch', `${task.id} -> ${session.title}`, { taskId: task.id, sessionId: session.id });
+  adapter.dispatch(task, session);
+  addOrchestratorMessage('dispatch', `${task.id} -> ${session.title} via ${adapter.label}`, {
+    taskId: task.id,
+    runId: run.id,
+    sessionId: session.id
+  });
   renderOrchestrator();
   return true;
 }
 
 function dispatchTask(taskId, targetSessionId = '') {
   const task = state.orchestrator.tasks.find((item) => item.id === taskId);
-  if (!task || ['running', 'done', 'cancelled'].includes(task.status)) {
+  if (!task || ['running', 'done', 'cancelled', 'archived'].includes(task.status)) {
     return;
   }
 
   const session = targetSessionId ? state.sessions.get(targetSessionId) : findSessionForCapability(task.capability);
   if (!session) {
+    task.status = 'blocked';
+    task.blockedReason = `No live CLI session can run ${task.capability}.`;
+    task.updatedAt = Date.now();
+    addTaskEvent('blocked', task.id, { reason: task.blockedReason });
     addOrchestratorMessage('blocked', `No live CLI session can run ${task.id}. Start a worker session first.`);
+    renderOrchestrator();
     return;
   }
 
@@ -721,7 +861,7 @@ function dispatchQueuedTasks() {
     return;
   }
   for (const task of state.orchestrator.tasks) {
-    if (task.status === 'queued') {
+    if (task.status === 'ready') {
       dispatchTask(task.id);
       return;
     }
@@ -1036,6 +1176,9 @@ function handleBrainCommand(session, command) {
       return;
     }
     task.status = 'cancelled';
+    task.currentRunId = null;
+    task.updatedAt = Date.now();
+    addTaskEvent('cancelled', task.id);
     addOrchestratorMessage('command', `Brain cancelled ${task.id}`);
     renderOrchestrator();
     sendStatusToBrain('cancel result');
@@ -1048,9 +1191,7 @@ function handleBrainCommand(session, command) {
       addOrchestratorMessage('blocked', `Brain retry command could not find ${command.taskId || 'task'}.`);
       return;
     }
-    task.status = 'queued';
-    task.assignedSessionId = null;
-    task.result = null;
+    retryTask(task);
     addOrchestratorMessage('command', `Brain retried ${task.id}`);
     renderOrchestrator();
     dispatchTask(task.id);
@@ -1095,8 +1236,7 @@ function handleWorkerResult(session, result) {
   }
   const task = state.orchestrator.tasks.find((item) => item.id === result.taskId);
   if (task) {
-    task.status = result.status === 'blocked' ? 'blocked' : 'done';
-    task.result = result;
+    finishTaskRun(task, result, result.status === 'blocked' ? 'blocked' : 'done');
   }
   addOrchestratorMessage('result', `${session.title}: ${result.status} ${result.taskId} - ${result.summary || 'No summary'}`, {
     taskId: result.taskId,
@@ -1268,12 +1408,39 @@ function renderOrchestrator() {
       const item = document.createElement('article');
       item.className = `orchestrator-task task-${task.status}`;
       appendText(item, 'p', 'orchestrator-task-title', `${task.id} ${task.title}`);
-      appendText(item, 'p', 'orchestrator-task-meta', `${task.status} / ${task.capability}`);
+      const assignee = task.assignedSessionId ? state.sessions.get(task.assignedSessionId)?.title || task.assignedSessionId : 'unassigned';
+      const runText = task.currentRunId ? ` / ${task.currentRunId}` : '';
+      appendText(
+        item,
+        'p',
+        'orchestrator-task-meta',
+        `${task.status} / ${task.capability} / ${assignee} / attempts ${task.attempts}${runText}`
+      );
+      if (task.blockedReason) {
+        appendText(item, 'p', 'orchestrator-task-meta', `blocked: ${task.blockedReason}`);
+      }
       const actions = document.createElement('div');
       actions.className = 'orchestrator-actions';
-      appendButton(actions, 'tiny-button', 'Dispatch', () => dispatchTask(task.id));
-      appendButton(actions, 'tiny-button danger-text', 'Drop', () => {
+      if (['ready', 'blocked'].includes(task.status)) {
+        appendButton(actions, 'tiny-button', task.status === 'blocked' ? 'Retry' : 'Dispatch', () => {
+          if (task.status === 'blocked') {
+            retryTask(task);
+          }
+          dispatchTask(task.id);
+        });
+      }
+      if (task.status === 'running') {
+        appendButton(actions, 'tiny-button danger-text', 'Cancel', () => {
+          task.status = 'cancelled';
+          task.currentRunId = null;
+          task.updatedAt = Date.now();
+          addTaskEvent('cancelled', task.id);
+          renderOrchestrator();
+        });
+      }
+      appendButton(actions, 'tiny-button danger-text', 'Archive', () => {
         state.orchestrator.tasks = state.orchestrator.tasks.filter((itemTask) => itemTask.id !== task.id);
+        addTaskEvent('archived', task.id);
         renderOrchestrator();
       });
       item.append(actions);
@@ -1281,11 +1448,19 @@ function renderOrchestrator() {
     }
   }
 
-  for (const message of state.orchestrator.messages.slice(0, 12)) {
+  for (const message of state.orchestrator.messages.slice(0, 10)) {
     const item = document.createElement('article');
     item.className = `orchestrator-message message-${message.kind}`;
     appendText(item, 'p', 'orchestrator-message-text', message.text);
     appendText(item, 'p', 'orchestrator-message-meta', `${message.kind} / ${message.time}`);
+    elements.orchestratorLog.append(item);
+  }
+
+  for (const event of state.orchestrator.events.slice(0, 8)) {
+    const item = document.createElement('article');
+    item.className = `orchestrator-message message-${event.kind}`;
+    appendText(item, 'p', 'orchestrator-message-text', `${event.taskId}: ${event.kind}`);
+    appendText(item, 'p', 'orchestrator-message-meta', new Date(event.createdAt).toLocaleTimeString());
     elements.orchestratorLog.append(item);
   }
 }
@@ -1848,11 +2023,13 @@ function markExited(id, exitCode) {
   session.listItem.querySelector('.status-dot').classList.add('exited');
   session.term.writeln('');
   session.term.writeln(`[process exited with code ${exitCode}]`);
+  blockRunningTasksForSession(id, `worker exited with code ${exitCode}`);
 
   if (state.activeId === id) {
     elements.closeButton.disabled = true;
   }
   elements.closeStoppedButton.disabled = false;
+  renderOrchestrator();
 }
 
 function restartActiveSession() {

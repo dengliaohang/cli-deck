@@ -133,6 +133,10 @@ Default policy:
 
 ## Orchestrator Swarm Scheduling
 
+The Orchestrator now treats CLI Deck's internal Task Board as the source of truth: Dispatch creates a task, the Dispatcher selects a worker by capability, and a Worker Adapter delivers the task to the concrete CLI. The current default adapter is the PTY prompt adapter for interactive Codex / Claude / OpenCode TUIs; future adapters can target Codex app-server or non-interactive commands.
+
+Task states include `ready`, `running`, `blocked`, `done`, and `cancelled`. Each dispatch creates a run with attempts, assignee, run id, and event history. If a worker exits before returning a result, CLI Deck marks the running task as `blocked` so it can be retried explicitly.
+
 For coding, build, test, or review objectives, Dispatch first creates a worker task directly in CLI Deck and assigns it by capability; worker results are then reported back to the Brain for follow-up scheduling. Plain chat objectives are sent to the Brain directly.
 
 Example dispatch command:
@@ -155,6 +159,8 @@ Supported Brain commands:
 - `message`: requires `target` and `message`
 
 When a worker finishes with a `CLI_DECK_RESULT_ACTUAL` block, CLI Deck updates task state and sends the result plus swarm status back to the Brain.
+
+Protocol blocks are still the compatibility reporting surface for the current PTY adapter, but they are not the long-term only control plane. The long-term architecture is: Task Board and Dispatcher own state, Worker Adapters own reliable tool-specific IO.
 
 ## Non-Goals
 
