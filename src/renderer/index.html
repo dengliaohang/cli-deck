@@ -33,13 +33,21 @@
           <div class="preset-list" id="preset-list"></div>
         </section>
 
-        <section class="panel goal-panel">
+        <section class="panel orchestrator-panel">
           <div class="panel-title-row">
-            <h2>Goal</h2>
-            <button class="tiny-button" id="goal-edit-button" type="button">Set</button>
+            <h2>Orchestrator</h2>
+            <label class="mini-toggle">
+              <input id="orchestrator-auto-dispatch" type="checkbox" checked />
+              <span>Auto</span>
+            </label>
           </div>
-          <div class="goal-card" id="goal-card">
-            <p class="memory-empty">Create a one-line goal to track tasks and outputs for this project.</p>
+          <div class="orchestrator-card" id="orchestrator-card">
+            <form class="orchestrator-form" id="orchestrator-form">
+              <textarea id="orchestrator-goal" spellcheck="false" placeholder="Describe the swarm objective"></textarea>
+              <button class="primary-button" type="submit">Dispatch</button>
+            </form>
+            <div class="orchestrator-queue" id="orchestrator-queue"></div>
+            <div class="orchestrator-log" id="orchestrator-log"></div>
           </div>
         </section>
 
@@ -124,30 +132,6 @@
         <div class="dialog-actions">
           <button class="ghost-button" id="cancel-button" type="button">Cancel</button>
           <button class="primary-button" id="start-button" value="default" type="submit">Start</button>
-        </div>
-      </form>
-    </dialog>
-
-    <dialog class="session-dialog" id="goal-dialog">
-      <form method="dialog" id="goal-form">
-        <div class="dialog-header">
-          <h2>Goal</h2>
-          <button class="icon-button" id="goal-close-button" type="button" aria-label="Close">×</button>
-        </div>
-
-        <label>
-          <span>One-line goal</span>
-          <input id="goal-title" name="title" autocomplete="off" placeholder="Fix terminal copy and paste behavior" />
-        </label>
-
-        <label>
-          <span>Notes</span>
-          <textarea id="goal-notes" name="notes" spellcheck="false" placeholder="Optional context, constraints, acceptance criteria"></textarea>
-        </label>
-
-        <div class="dialog-actions">
-          <button class="ghost-button" id="goal-cancel-button" type="button">Cancel</button>
-          <button class="primary-button" id="goal-save-button" value="default" type="submit">Save</button>
         </div>
       </form>
     </dialog>

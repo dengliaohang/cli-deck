@@ -86,44 +86,18 @@ function isTextPasteShortcut(event) {
   return event.ctrlKey && !event.altKey;
 }
 
-function sanitizeGoalTask(task = {}) {
-  return {
-    id: String(task.id || 'task-id'),
-    title: String(task.title || '').trim(),
-    status: ['todo', 'doing', 'blocked', 'done'].includes(task.status) ? task.status : 'todo',
-    notes: String(task.notes || '').trim(),
-    sessionIds: Array.isArray(task.sessionIds) ? [...new Set(task.sessionIds.map(String))] : []
-  };
-}
-
-function nextGoalTaskStatus(value) {
-  const order = ['todo', 'doing', 'done'];
-  const index = order.indexOf(value);
-  if (value === 'blocked') {
-    return 'doing';
+function classifyCommand(command) {
+  const value = String(command || '').toLowerCase();
+  if (value.includes('opencode')) {
+    return 'opencode';
   }
-  return order[(index + 1) % order.length] || 'todo';
-}
-
-function goalToMarkdown(goal) {
-  const lines = [
-    `# ${goal.title || 'CLI Deck goal'}`,
-    '',
-    `Project: \`${goal.cwd}\``,
-    `Status: ${goal.status || 'active'}`,
-    '',
-    '## Tasks'
-  ];
-
-  if (!goal.tasks.length) {
-    lines.push('- None');
-  } else {
-    for (const task of goal.tasks) {
-      lines.push(`- [${task.status === 'done' ? 'x' : ' '}] ${task.title} (${task.status})`);
-    }
+  if (value.includes('claude')) {
+    return 'claude';
   }
-
-  return `${lines.join('\n')}\n`;
+  if (value.includes('codex')) {
+    return 'codex';
+  }
+  return 'custom';
 }
 
 function classifyFailureCategory(hints) {
@@ -199,6 +173,69 @@ function searchProjectMemories(memories, options = {}) {
   });
 }
 
+function inferCapabilities(command) {
+  const tool = classifyCommand(command);
+  if (tool === 'codex') {
+    return ['implement', 'test', 'review'];
+  }
+  if (tool === 'claude') {
+    return ['review', 'plan', 'research'];
+  }
+  if (tool === 'opencode') {
+    return ['implement', 'test'];
+  }
+  return ['custom'];
+}
+
+function parseResultBlock(block) {
+  const lines = block
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const result = { taskId: '', status: 'done', summary: '', details: [], next: '' };
+  let section = '';
+
+  for (const line of lines) {
+    if (line === 'CLI_DECK_RESULT_START' || line === 'CLI_DECK_RESULT_END') {
+      continue;
+    }
+    const match = line.match(/^([a-z_]+):\s*(.*)$/i);
+    if (match) {
+      section = match[1].toLowerCase();
+      const value = match[2].trim();
+      if (section === 'task_id') result.taskId = value;
+      if (section === 'status') result.status = value;
+      if (section === 'summary') result.summary = value;
+      if (section === 'next') result.next = value;
+      continue;
+    }
+    if (section === 'details') {
+      result.details.push(line.replace(/^-\s*/, ''));
+    }
+  }
+  return result;
+}
+
+function chooseNextCapability(result, completedTask = null) {
+  const completedCapability = completedTask?.capability || '';
+  if (result.status === 'blocked') {
+    return 'research';
+  }
+  if (result.status === 'needs_review') {
+    return 'review';
+  }
+  if (result.status === 'needs_test') {
+    return 'test';
+  }
+  if (result.status === 'done' && completedCapability === 'implement') {
+    return 'review';
+  }
+  if (result.status === 'done' && completedCapability === 'review') {
+    return 'test';
+  }
+  return '';
+}
+
 const presets = parsePresetsText('Codex | codex --model gpt-5\nClaude | claude "hello world"\nopencode');
 assert.deepEqual(presets, [
   { name: 'Codex', command: 'codex', args: ['--model', 'gpt-5'] },
@@ -221,26 +258,29 @@ assert.equal(isTextPasteShortcut({ key: 'V', ctrlKey: true, altKey: false, metaK
 assert.equal(isTextPasteShortcut({ key: 'v', ctrlKey: false, altKey: false, metaKey: true }), true);
 assert.equal(isTextPasteShortcut({ key: 'v', ctrlKey: true, altKey: true, metaKey: false }), false);
 assert.equal(isTextPasteShortcut({ key: 'c', ctrlKey: true, altKey: false, metaKey: false }), false);
-assert.deepEqual(sanitizeGoalTask({ title: '  Ship goal panel  ', status: 'bad', sessionIds: ['a', 'a'] }), {
-  id: 'task-id',
-  title: 'Ship goal panel',
-  status: 'todo',
-  notes: '',
-  sessionIds: ['a']
-});
-assert.equal(nextGoalTaskStatus('todo'), 'doing');
-assert.equal(nextGoalTaskStatus('doing'), 'done');
-assert.equal(nextGoalTaskStatus('done'), 'todo');
-assert.equal(nextGoalTaskStatus('blocked'), 'doing');
-assert.match(
-  goalToMarkdown({
-    title: 'Goal records',
-    cwd: 'C:/development/workspace/tools',
-    status: 'active',
-    tasks: [{ title: 'Build MVP', status: 'done' }]
-  }),
-  /- \[x\] Build MVP \(done\)/
-);
+assert.deepEqual(inferCapabilities('codex'), ['implement', 'test', 'review']);
+assert.deepEqual(inferCapabilities('claude'), ['review', 'plan', 'research']);
+assert.deepEqual(inferCapabilities('opencode'), ['implement', 'test']);
+const parsedResult = parseResultBlock(`
+CLI_DECK_RESULT_START
+task_id: task-1
+status: needs_review
+summary: implemented the feature
+details:
+- changed renderer
+next:
+- review the diff
+CLI_DECK_RESULT_END
+`);
+assert.equal(parsedResult.taskId, 'task-1');
+assert.equal(parsedResult.status, 'needs_review');
+assert.equal(parsedResult.summary, 'implemented the feature');
+assert.deepEqual(parsedResult.details, ['changed renderer']);
+assert.equal(chooseNextCapability(parsedResult), 'review');
+assert.equal(chooseNextCapability({ status: 'done' }, { capability: 'implement' }), 'review');
+assert.equal(chooseNextCapability({ status: 'done' }, { capability: 'review' }), 'test');
+assert.equal(chooseNextCapability({ status: 'blocked' }), 'research');
+assert.equal(chooseNextCapability({ status: 'needs_test' }), 'test');
 
 assert.equal(classifyFailureCategory(['npm ERR! command not found']), 'command');
 assert.equal(classifyFailureCategory(['Traceback most recent call last']), 'exception');

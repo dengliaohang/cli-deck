@@ -100,20 +100,38 @@ History 支持：
 - 删除 project memory
 - 清理过期 raw logs
 
-### 4.4 Goal 目标记录
+### 4.4 Orchestrator 调度大脑
 
-Goal 是按 working directory 保存的轻量工作目标记录，不要求用户先写完整 PRD。
+Orchestrator 是面向多个 AI CLI session 的本地调度层。CLI Deck 作为蜂群大脑，根据 session 的工具类型推断能力，把任务派发给合适的 CLI worker，并解析 worker 输出的结果协议块。
 
-第一版只要求用户输入一句话目标，可选填写 notes。后续工作过程中，用户可以手动添加任务、关联当前 session、记录产出，并导出 Markdown。
+MVP 能力：
 
-记录内容：
+- 按命令推断能力：
+  - Codex: implement / test / review
+  - Claude: review / plan / research
+  - OpenCode: implement / test
+  - Custom: custom
+- 用户输入一个 swarm objective 后创建首个任务。
+- Auto dispatch 开启时，自动选择可用 worker 并写入任务 prompt。
+- worker 完成后输出 `CLI_DECK_RESULT_START` / `CLI_DECK_RESULT_END` 协议块。
+- CLI Deck 解析结果后更新任务状态，并按结果自动排队下一步：
+- `done` / `needs_review` -> review
+- `needs_test` -> test
+- `blocked` -> research
 
-- title
-- notes
-- task list
-- attached sessions
-- output notes
-- Markdown export
+Worker 结果协议：
+
+```text
+CLI_DECK_RESULT_START
+task_id: task-1
+status: done | blocked | needs_review | needs_test
+summary: one sentence summary
+details:
+- important detail
+next:
+- suggested next task, or none
+CLI_DECK_RESULT_END
+```
 
 ## 5. 非目标
 
@@ -257,8 +275,6 @@ fallback: /bin/sh
 <userData>/memory/
   projects/
     <cwd-hash>.json
-  goals/
-    <cwd-hash>.json
   sessions/
     <YYYY-MM-DD>/
       <session-id>.log
@@ -266,7 +282,6 @@ fallback: /bin/sh
   exports/
     <project-name>-<hash>.md
     <project-name>-<hash>.json
-    <project-name>-goal-<hash>.md
 ```
 
 项目 key：
@@ -281,7 +296,6 @@ Retention：
 - failed raw log 默认 60 天
 - 单 session raw log 默认 20 MB
 - session JSON 和 project memory 默认保留
-- goal JSON 按 cwd hash 保留，内容来自用户主动填写和手动关联
 
 ### 6.7 IPC 设计
 
@@ -298,14 +312,6 @@ Renderer -> Main：
 - `memory:exportProject({ projectKey, format })`
 - `memory:deleteProject({ projectKey, deleteSessionFiles })`
 - `memory:cleanupRawLogs`
-- `goal:get(cwd)`
-- `goal:save({ cwd, patch })`
-- `goal:addTask({ cwd, title })`
-- `goal:updateTask({ cwd, taskId, patch })`
-- `goal:deleteTask({ cwd, taskId })`
-- `goal:attachSession({ cwd, sessionId })`
-- `goal:addOutput({ cwd, output })`
-- `goal:export(cwd)`
 - `terminal:create(config)`
 - `terminal:input`
 - `terminal:resize`
@@ -326,7 +332,7 @@ Main -> Renderer：
   - Settings
   - Sessions
   - Presets
-  - Goal
+  - Orchestrator
   - Memory
 - 右侧 workspace：
   - toolbar
@@ -349,18 +355,18 @@ History：
 - 点击项目进入详情
 - 支持导出、打开日志、重新启动项目 session
 
-### 7.4 Goal 面板
+### 7.4 Orchestrator 面板
 
-Goal 面板跟随当前 active session 的 cwd。没有 active session 时，使用默认 working directory。
+Orchestrator 面板在 sidebar 内展示调度目标、worker roster、任务队列和消息流。
 
 交互：
 
-- Set：创建或编辑一句话目标和 notes
-- Add task：添加任务
-- 任务状态：Todo -> Doing -> Done -> Todo，Blocked 可恢复为 Doing
-- Attach session：把当前 active session 关联到目标
-- Add output：手动记录产出
-- Export MD：导出目标、任务、session 和产出
+- 输入 swarm objective 并 Dispatch。
+- Auto 开关控制是否自动派发 queued task。
+- worker roster 展示当前 live session 和推断能力。
+- Dispatch 按钮可手动派发单个 queued task。
+- Drop 按钮可丢弃任务。
+- 消息流展示 objective、dispatch、result、route、blocked 等事件。
 
 ## 8. 安全与隐私
 
@@ -368,7 +374,7 @@ Goal 面板跟随当前 active session 的 cwd。没有 active session 时，使
 - 不上传 raw log。
 - 不在 renderer 中直接写文件。
 - Memory 开关允许用户在敏感 session 中禁用持久化。
-- Goal 只保存用户主动填写、手动添加或手动关联的信息。
+- Orchestrator 通过写入当前 PTY 派发任务，不绕过 CLI 自身确认流程。
 - raw log 有大小上限和过期清理。
 - 删除 project memory 不默认删除 raw session files，避免误删排障材料。
 
@@ -386,8 +392,8 @@ Goal 面板跟随当前 active session 的 cwd。没有 active session 时，使
   - 退出后写 summary
   - 更新 project memory
   - renderer 收到 `memory:updated`
-- 创建 Goal 时只需要一句话 title。
-- Goal 支持添加任务、切换状态、关联当前 session、添加产出、导出 Markdown。
+- Orchestrator 能创建 objective task，并按能力派发给 live worker session。
+- Orchestrator 能解析 `CLI_DECK_RESULT` 协议块，并根据 status 排队 review/test/research 后续任务。
 - Windows `npm.cmd run build:dir` 成功。
 - `npm.cmd test` 成功。
 - `node --check` 对 main/preload/renderer/scripts 成功。
@@ -398,5 +404,5 @@ Goal 面板跟随当前 active session 的 cwd。没有 active session 时，使
 - 项目详情增加完整 session JSON 查看。
 - macOS 正式分发：图标、签名、公证、arm64/x64 验证。
 - Linux 打包目标验证。
-- Goal 后续可从 session 结束摘要自动建议任务状态和产出，但默认不自动写入。
+- Orchestrator 后续可增加持久化调度历史、任务依赖图、人工确认队列和 worker 能力手动编辑。
 - 可选 hook 系统，但必须保持默认关闭和本地可控。

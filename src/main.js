@@ -277,16 +277,11 @@ function getProjectMemoryPathByKey(projectKey) {
   return path.join(getMemoryRoot(), 'projects', `${safeKey}.json`);
 }
 
-function getGoalPath(cwd) {
-  return path.join(getMemoryRoot(), 'goals', `${getProjectKey(cwd)}.json`);
-}
-
 function ensureMemoryDirectories(sessionDate) {
   const root = getMemoryRoot();
   const dirs = [
     root,
     path.join(root, 'projects'),
-    path.join(root, 'goals'),
     path.join(root, 'exports'),
     path.join(root, 'sessions'),
     path.join(root, 'sessions', sessionDate)
@@ -822,200 +817,6 @@ function projectMemoryToMarkdown(memory) {
   return `${lines.join('\n')}\n`;
 }
 
-function createEmptyGoal(cwd) {
-  const normalizedCwd = normalizeCwd(cwd);
-  return {
-    id: crypto.randomUUID(),
-    cwd: normalizedCwd,
-    projectKey: getProjectKey(normalizedCwd),
-    title: '',
-    notes: '',
-    status: 'empty',
-    createdAt: null,
-    updatedAt: null,
-    tasks: [],
-    sessions: [],
-    outputs: []
-  };
-}
-
-function sanitizeGoalTask(task = {}) {
-  return {
-    id: String(task.id || crypto.randomUUID()),
-    title: String(task.title || '').trim(),
-    status: ['todo', 'doing', 'blocked', 'done'].includes(task.status) ? task.status : 'todo',
-    notes: String(task.notes || '').trim(),
-    sessionIds: Array.isArray(task.sessionIds) ? [...new Set(task.sessionIds.map(String))] : [],
-    createdAt: task.createdAt || new Date().toISOString(),
-    updatedAt: task.updatedAt || new Date().toISOString()
-  };
-}
-
-function sanitizeGoal(value, cwd) {
-  const normalizedCwd = normalizeCwd(cwd || value?.cwd);
-  const now = new Date().toISOString();
-  const title = String(value?.title || '').trim();
-  return {
-    id: String(value?.id || crypto.randomUUID()),
-    cwd: normalizedCwd,
-    projectKey: getProjectKey(normalizedCwd),
-    title,
-    notes: String(value?.notes || '').trim(),
-    status: title ? value?.status || 'active' : 'empty',
-    createdAt: value?.createdAt || (title ? now : null),
-    updatedAt: value?.updatedAt || (title ? now : null),
-    tasks: Array.isArray(value?.tasks) ? value.tasks.map(sanitizeGoalTask).filter((task) => task.title) : [],
-    sessions: Array.isArray(value?.sessions) ? value.sessions.slice(0, 50) : [],
-    outputs: Array.isArray(value?.outputs) ? value.outputs.slice(0, 50) : []
-  };
-}
-
-function loadGoal(cwd) {
-  const normalizedCwd = normalizeCwd(cwd);
-  const goal = readJsonFile(getGoalPath(normalizedCwd), null);
-  if (!goal) {
-    return createEmptyGoal(normalizedCwd);
-  }
-  return sanitizeGoal(goal, normalizedCwd);
-}
-
-function saveGoal(cwd, patch = {}) {
-  const current = loadGoal(cwd);
-  const now = new Date().toISOString();
-  const next = sanitizeGoal(
-    {
-      ...current,
-      ...patch,
-      cwd: current.cwd,
-      projectKey: current.projectKey,
-      createdAt: current.createdAt || now,
-      updatedAt: now
-    },
-    current.cwd
-  );
-  writeJsonFile(getGoalPath(current.cwd), next);
-  return next;
-}
-
-function addGoalTask(cwd, title) {
-  const current = loadGoal(cwd);
-  const task = sanitizeGoalTask({ title });
-  if (!task.title) {
-    throw new Error('Task title is required.');
-  }
-  return saveGoal(current.cwd, { tasks: [task, ...current.tasks] });
-}
-
-function updateGoalTask(cwd, taskId, patch = {}) {
-  const current = loadGoal(cwd);
-  const tasks = current.tasks.map((task) => {
-    if (task.id !== taskId) {
-      return task;
-    }
-    return sanitizeGoalTask({
-      ...task,
-      ...patch,
-      id: task.id,
-      createdAt: task.createdAt,
-      updatedAt: new Date().toISOString()
-    });
-  });
-  return saveGoal(current.cwd, { tasks: tasks.filter((task) => task.title) });
-}
-
-function deleteGoalTask(cwd, taskId) {
-  const current = loadGoal(cwd);
-  return saveGoal(current.cwd, { tasks: current.tasks.filter((task) => task.id !== taskId) });
-}
-
-function attachGoalSession(cwd, session) {
-  const current = loadGoal(cwd);
-  const sessionEntry = {
-    id: session.id,
-    title: session.title,
-    commandLine: toCommandLine(session.command, session.args),
-    cwd: session.cwd,
-    attachedAt: new Date().toISOString()
-  };
-  const sessions = [sessionEntry, ...current.sessions.filter((item) => item.id !== session.id)].slice(0, 50);
-  return saveGoal(current.cwd, { sessions });
-}
-
-function addGoalOutput(cwd, output = {}) {
-  const current = loadGoal(cwd);
-  const title = String(output.title || '').trim();
-  if (!title) {
-    throw new Error('Output title is required.');
-  }
-  const item = {
-    id: crypto.randomUUID(),
-    type: String(output.type || 'note').trim() || 'note',
-    title,
-    createdAt: new Date().toISOString()
-  };
-  return saveGoal(current.cwd, { outputs: [item, ...current.outputs].slice(0, 50) });
-}
-
-function goalToMarkdown(goal) {
-  const lines = [
-    `# ${goal.title || 'CLI Deck goal'}`,
-    '',
-    `Project: \`${goal.cwd}\``,
-    `Status: ${goal.status || 'active'}`,
-    `Updated: ${goal.updatedAt || ''}`,
-    '',
-    '## Notes',
-    '',
-    goal.notes || 'None',
-    '',
-    '## Tasks'
-  ];
-
-  if (!goal.tasks.length) {
-    lines.push('- None');
-  } else {
-    for (const task of goal.tasks) {
-      lines.push(`- [${task.status === 'done' ? 'x' : ' '}] ${task.title} (${task.status})`);
-      if (task.notes) {
-        lines.push(`  - ${task.notes}`);
-      }
-    }
-  }
-
-  lines.push('', '## Sessions');
-  if (!goal.sessions.length) {
-    lines.push('- None');
-  } else {
-    for (const session of goal.sessions) {
-      lines.push(`- ${session.title || session.id}: \`${session.commandLine || ''}\``);
-    }
-  }
-
-  lines.push('', '## Outputs');
-  if (!goal.outputs.length) {
-    lines.push('- None');
-  } else {
-    for (const output of goal.outputs) {
-      lines.push(`- [${output.type}] ${output.title}`);
-    }
-  }
-
-  return `${lines.join('\n')}\n`;
-}
-
-function exportGoal(cwd) {
-  const goal = loadGoal(cwd);
-  if (!goal.title) {
-    throw new Error('Goal is empty.');
-  }
-  const safeName = path.basename(goal.cwd).replace(/[^\w.-]+/g, '-') || 'goal';
-  const outputDir = path.join(getMemoryRoot(), 'exports');
-  fs.mkdirSync(outputDir, { recursive: true });
-  const filePath = path.join(outputDir, `${safeName}-goal-${goal.projectKey}.md`);
-  fs.writeFileSync(filePath, goalToMarkdown(goal), 'utf8');
-  return { filePath, format: 'md' };
-}
-
 function exportProjectMemory(projectKey, format = 'json') {
   const memory = loadProjectMemoryByKey(projectKey);
   if (!memory) {
@@ -1315,28 +1116,6 @@ ipcMain.handle('memory:deleteProject', (_event, { projectKey, deleteSessionFiles
 );
 
 ipcMain.handle('memory:cleanupRawLogs', () => cleanupExpiredRawLogs());
-
-ipcMain.handle('goal:get', (_event, cwd) => loadGoal(cwd));
-
-ipcMain.handle('goal:save', (_event, { cwd, patch }) => saveGoal(cwd, patch || {}));
-
-ipcMain.handle('goal:addTask', (_event, { cwd, title }) => addGoalTask(cwd, title));
-
-ipcMain.handle('goal:updateTask', (_event, { cwd, taskId, patch }) => updateGoalTask(cwd, taskId, patch || {}));
-
-ipcMain.handle('goal:deleteTask', (_event, { cwd, taskId }) => deleteGoalTask(cwd, taskId));
-
-ipcMain.handle('goal:attachSession', (_event, { cwd, sessionId }) => {
-  const session = sessions.get(sessionId);
-  if (!session) {
-    throw new Error('Session was not found.');
-  }
-  return attachGoalSession(cwd || session.cwd, session);
-});
-
-ipcMain.handle('goal:addOutput', (_event, { cwd, output }) => addGoalOutput(cwd, output || {}));
-
-ipcMain.handle('goal:export', (_event, cwd) => exportGoal(cwd));
 
 ipcMain.handle('terminal:create', (_event, config) => {
   if (!config?.command || typeof config.command !== 'string') {

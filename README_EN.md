@@ -10,7 +10,7 @@ CLI Deck is an Electron desktop workspace for running and managing multiple AI C
 - Automatically tiles multiple sessions, which is useful when running several Codex / Claude / OpenCode tasks in parallel.
 - Supports custom command, arguments, and working directory.
 - Lets you decide whether each new session is recorded in Memory, which is useful for temporary or sensitive sessions.
-- Goal records: each working directory can keep a one-line goal, task list, attached sessions, output notes, and Markdown export.
+- Orchestrator: dispatches tasks to CLI sessions by capability, parses `CLI_DECK_RESULT` result blocks, and queues follow-up review, test, or research work.
 - Session titles automatically include the tail of the current path, for example `Codex — workspace/tools`; long paths keep only the last two segments.
 - Session actions: restart, duplicate, rename, copy command, open cwd, and close stopped.
 - Local memory layer:
@@ -114,8 +114,6 @@ CLI Deck writes session memory under Electron `userData`, not inside your source
 <userData>/memory/
   projects/
     <cwd-hash>.json
-  goals/
-    <cwd-hash>.json
   sessions/
     <YYYY-MM-DD>/
       <session-id>.log
@@ -123,7 +121,6 @@ CLI Deck writes session memory under Electron `userData`, not inside your source
   exports/
     <project-name>-<hash>.md
     <project-name>-<hash>.json
-    <project-name>-goal-<hash>.md
 ```
 
 Default policy:
@@ -132,7 +129,6 @@ Default policy:
 - Normal raw logs are kept for 30 days.
 - Failed session raw logs are kept for 60 days.
 - Session JSON summaries and project memory are retained.
-- Goal records are stored by working directory and contain only the goal, tasks, attached sessions, and output notes you add.
 - Raw log toggle, size, and retention days can be changed in Settings.
 
 ## Non-Goals
