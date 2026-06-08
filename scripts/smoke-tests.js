@@ -304,7 +304,7 @@ function consumeOrchestratorBlocks(buffer) {
 }
 
 function buildTypedPromptWrites(prompt) {
-  return [String(prompt || ''), '\r'];
+  return [String(prompt || ''), '\n'];
 }
 
 function buildPastedPromptWrites(prompt) {
@@ -423,7 +423,7 @@ CLI_DECK_RESULT_ACTUAL_END
 `).map((event) => event.type),
   ['command', 'result']
 );
-assert.deepEqual(buildTypedPromptWrites('hello'), ['hello', '\r']);
+assert.deepEqual(buildTypedPromptWrites('hello'), ['hello', '\n']);
 assert.deepEqual(buildPastedPromptWrites('hello'), ['\x1b[200~hello\x1b[201~', '\r']);
 assert.equal(compactPromptText('hello\n\n world  '), 'hello world');
 assert.equal(chooseNextCapability({ status: 'done' }, { capability: 'implement' }), 'review');

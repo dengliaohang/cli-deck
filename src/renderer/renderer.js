@@ -596,7 +596,7 @@ function createSwarmTask(title, capability = 'implement', sourceTaskId = null) {
 
 function submitTypedPrompt(sessionId, prompt) {
   window.cliDeck.writeTerminal(sessionId, String(prompt || ''));
-  window.setTimeout(() => window.cliDeck.writeTerminal(sessionId, '\r'), 30);
+  window.setTimeout(() => window.cliDeck.writeTerminal(sessionId, '\n'), 80);
 }
 
 function pasteAndSubmitPrompt(sessionId, prompt) {
@@ -617,15 +617,7 @@ function submitBrainPrompt(sessionId, prompt) {
 }
 
 function buildBrainObjectivePrompt(objective) {
-  return [
-    `Objective: ${objective}`,
-    'You are the selected CLI Deck swarm brain.',
-    'Work normally and answer the user. If worker CLIs should act, emit an actual command block.',
-    'Command markers are CLI_DECK_COMMAND_ + ACTUAL_START and CLI_DECK_COMMAND_ + ACTUAL_END.',
-    'Actions: dispatch with capability/task/optional target; status; cancel with task_id; retry with task_id; message with target/message.',
-    'Plan markers are CLI_DECK_PLAN_ + ACTUAL_START and CLI_DECK_PLAN_ + ACTUAL_END with task: capability | task text.',
-    'Only emit a command or plan block when CLI Deck should route work.'
-  ].join(' ');
+  return objective;
 }
 
 function buildWorkerPrompt(task, session) {
