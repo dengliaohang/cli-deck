@@ -587,11 +587,35 @@ function renderGoal(goal) {
 
   const actions = document.createElement('div');
   actions.className = 'goal-actions';
-  appendButton(actions, 'tiny-button', 'Add task', () => addGoalTask());
   appendButton(actions, 'tiny-button', 'Attach session', () => attachActiveSessionToGoal());
-  appendButton(actions, 'tiny-button', 'Add output', () => addGoalOutput());
   appendButton(actions, 'tiny-button', 'Export MD', () => exportCurrentGoal());
   elements.goalCard.append(actions);
+
+  const taskForm = document.createElement('form');
+  taskForm.className = 'goal-inline-form';
+  taskForm.innerHTML = `
+    <input class="goal-inline-input" name="title" autocomplete="off" placeholder="Add a task" />
+    <button class="tiny-button" type="submit">+ Task</button>
+  `;
+  taskForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const input = taskForm.querySelector('input');
+    addGoalTask(input.value);
+  });
+  elements.goalCard.append(taskForm);
+
+  const outputForm = document.createElement('form');
+  outputForm.className = 'goal-inline-form';
+  outputForm.innerHTML = `
+    <input class="goal-inline-input" name="title" autocomplete="off" placeholder="Add an output note" />
+    <button class="tiny-button" type="submit">+ Output</button>
+  `;
+  outputForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const input = outputForm.querySelector('input');
+    addGoalOutput(input.value);
+  });
+  elements.goalCard.append(outputForm);
 
   appendText(elements.goalCard, 'p', 'goal-section-title', 'Tasks');
   if (!goal.tasks.length) {
@@ -684,13 +708,14 @@ async function saveGoalFromDialog() {
   setStatus('Goal saved');
 }
 
-async function addGoalTask() {
-  const title = window.prompt('Task title');
+async function addGoalTask(title) {
   if (!title?.trim()) {
+    setStatus('Task title is required');
     return;
   }
   try {
     renderGoal(await window.cliDeck.addGoalTask(getGoalCwd(), title.trim()));
+    setStatus('Task added');
   } catch (error) {
     setStatus(`Add task failed: ${error.message}`);
   }
@@ -718,7 +743,7 @@ async function deleteGoalTask(taskId) {
 async function attachActiveSessionToGoal() {
   const active = state.sessions.get(state.activeId);
   if (!active) {
-    setStatus('No active session to attach');
+    setStatus('Start or select a session before attaching it');
     return;
   }
   try {
@@ -729,13 +754,14 @@ async function attachActiveSessionToGoal() {
   }
 }
 
-async function addGoalOutput() {
-  const title = window.prompt('Output title');
+async function addGoalOutput(title) {
   if (!title?.trim()) {
+    setStatus('Output title is required');
     return;
   }
   try {
     renderGoal(await window.cliDeck.addGoalOutput(getGoalCwd(), { type: 'note', title: title.trim() }));
+    setStatus('Output added');
   } catch (error) {
     setStatus(`Add output failed: ${error.message}`);
   }

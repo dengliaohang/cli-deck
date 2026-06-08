@@ -414,6 +414,28 @@ button:disabled {
   text-transform: uppercase;
 }
 
+.goal-inline-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px;
+}
+
+.goal-inline-input {
+  min-width: 0;
+  min-height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0 8px;
+  outline: none;
+  background: #0f131a;
+  color: var(--text);
+  font-size: 11px;
+}
+
+.goal-inline-input:focus {
+  border-color: rgba(85, 194, 162, 0.72);
+}
+
 .goal-task {
   align-items: flex-start;
   justify-content: space-between;
