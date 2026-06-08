@@ -1,13 +1,14 @@
 {
   "name": "cli-deck",
   "version": "0.1.0",
-  "description": "A Windows desktop host for Codex, Claude Code, OpenCode and other CLI tools.",
+  "description": "A tiled desktop workspace for Codex, Claude Code, OpenCode and other CLI tools.",
   "main": "src/main.js",
   "type": "commonjs",
   "scripts": {
     "start": "electron .",
     "test": "node scripts/smoke-tests.js",
     "build:dir": "electron-builder --win dir",
+    "build:mac": "electron-builder --mac dir",
     "build": "electron-builder --win nsis portable",
     "build:portable": "electron-builder --win portable"
   },
@@ -51,6 +52,11 @@
       "target": [
         "nsis",
         "portable"
+      ]
+    },
+    "mac": {
+      "target": [
+        "dir"
       ]
     },
     "nsis": {

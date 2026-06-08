@@ -1,69 +1,188 @@
 # CLI Deck
 
-CLI Deck is a Windows desktop workspace for running Codex, OpenCode, Claude Code and other CLI tools in one tiled window.
+CLI Deck 是一个用于同时运行和管理多个 AI CLI 会话的 Electron 桌面工作台。它把 Codex、Claude Code、OpenCode 或任意自定义 CLI 放在同一个平铺窗口里，并为每个工作目录保存本地项目记忆。
 
-It uses Electron, `@lydell/node-pty` and xterm.js so each session runs in a real pseudo terminal.
+English summary: CLI Deck is a tiled desktop workspace for running multiple AI CLI sessions with local project memory.
 
-## Run locally
+## 功能特性
+
+- 在应用内启动真实 PTY 终端会话，不依赖抓取外部终端窗口。
+- 多 session 自动平铺展示，适合同时跑多个 Codex / Claude / OpenCode 任务。
+- 支持自定义 command、arguments、working directory。
+- session 标题会自动追加当前路径尾部信息，例如 `Codex — workspace/tools`，长路径只取最后两段。
+- 支持 restart、duplicate、rename、copy command、open cwd、close stopped。
+- 本地 memory 层：
+  - raw terminal log
+  - session summary JSON
+  - project memory JSON
+  - 历史搜索和筛选
+  - 项目详情、打开日志、导出 JSON/Markdown、删除项目记忆、清理过期 raw logs
+- Settings 面板可配置 presets、默认工作目录、raw log 开关、日志大小和保留天数。
+
+## 支持平台
+
+当前主要开发和验证环境是 Windows。代码已经支持 macOS / Linux 使用系统 shell 启动 CLI：
+
+- Windows: 使用 `powershell.exe`
+- macOS: 使用 `$SHELL`，默认 `/bin/zsh`
+- Linux: 使用 `$SHELL`，默认 `/bin/sh`
+
+macOS 上建议先按源码方式运行。打包脚本已提供 `build:mac` 的目录构建目标，但 macOS 打包需要在 macOS 机器上执行。
+
+## 本地运行
+
+### Windows
 
 ```powershell
 npm.cmd install
 npm.cmd start
 ```
 
-In restricted Windows environments where Electron cannot write to the default `AppData` location, run with local app data:
+如果 Electron 无法写入默认 `AppData` 目录，可以把运行数据放到项目内：
 
 ```powershell
 $env:CLI_DECK_PORTABLE_DATA='1'; npm.cmd start
 ```
 
-## Build an exe
+### macOS
+
+先安装 Node.js 20+，然后执行：
+
+```bash
+npm install
+npm start
+```
+
+如果 Codex、Claude Code 或 OpenCode 不在默认 PATH 中，请先确认在普通终端里能直接运行：
+
+```bash
+codex --version
+claude --version
+opencode --version
+```
+
+CLI Deck 在 macOS 创建 session 时会通过 `$SHELL -lc "<command>"` 启动命令，因此会读取你的 shell 登录环境。常见 CLI 路径可放在 `~/.zshrc`、`~/.zprofile` 或你实际使用 shell 的配置文件中。
+
+### Linux
+
+```bash
+npm install
+npm start
+```
+
+Linux 使用 `$SHELL -lc "<command>"` 启动 CLI。请先确认目标 CLI 在普通终端中可直接运行。
+
+## 构建
+
+### Windows 目录版
 
 ```powershell
 npm.cmd run build:dir
 ```
 
-The runnable app is written to `dist/win-unpacked/CLI Deck.exe`.
+输出目录：
 
-To build a single portable exe or installer:
+```text
+dist/win-unpacked/CLI Deck.exe
+```
+
+### Windows portable / installer
 
 ```powershell
 npm.cmd run build
 ```
 
-That target uses NSIS. If your network cannot reach GitHub, use `build:dir` or pre-populate the electron-builder NSIS cache.
+这个目标会使用 NSIS。如果网络无法访问 GitHub，请使用 `build:dir`，或提前准备 electron-builder 的 NSIS 缓存。
 
-## Workflow
+### macOS 目录版
 
-Start sessions from inside CLI Deck. Each session appears as a polished terminal panel and the workspace automatically tiles all running sessions so several command windows can stay visible on one screen.
+需要在 macOS 上执行：
 
-Default launch presets:
+```bash
+npm run build:mac
+```
 
-- `codex`
-- `opencode`
-- `claude`
+输出在 `dist/mac*` 相关目录中。当前配置是目录构建，适合本地验证；正式分发还需要补充签名、公证和图标配置。
 
-Use **New Session** for a custom command or working directory.
+## Memory 存储位置
 
-Session controls include restart, duplicate, open working directory, rename, copy command, close active session, and close stopped sessions.
+CLI Deck 把会话记忆写在 Electron `userData` 下，不写入你的源码仓库：
 
-Use **Settings** to edit launch presets, the default working directory, raw log recording, max log size, and raw log retention.
+```text
+<userData>/memory/
+  projects/
+    <cwd-hash>.json
+  sessions/
+    <YYYY-MM-DD>/
+      <session-id>.log
+      <session-id>.json
+  exports/
+    <project-name>-<hash>.md
+    <project-name>-<hash>.json
+```
 
-## Memory layer
+默认策略：
 
-CLI Deck records sessions it launches and groups memory by working directory.
+- 单 session raw log 上限 20 MB。
+- 普通 raw log 保留 30 天。
+- failed session raw log 保留 60 天。
+- session JSON summary 和 project memory 会保留。
+- 可在 Settings 中调整 raw log 开关、大小和保留天数。
 
-Stored locally under Electron `userData`:
+## 不做什么
 
-- Raw terminal logs.
-- Session metadata and heuristic summaries.
-- Project memory with recent sessions, common commands and known failure snippets.
-- A sidebar Memory panel with `Current` and `History` views, so closed sessions remain browsable.
-- History search and filters for project path, command text, tool, status, and failure category.
-- Project detail actions for starting a new session in that project, opening the working directory, opening raw logs, exporting memory as JSON or Markdown, deleting project memory, and cleaning expired raw logs.
+当前版本刻意保持本地、确定性和可控：
 
-Raw logs are capped at 20 MB per session by default. Expired raw `.log` files are cleaned on app startup after 30 days, while failed session logs are kept for 60 days. Session `.json` summaries and project memory are retained. These values can be changed in Settings.
+- 不调用云端 AI API 生成摘要。
+- 不执行用户自定义 hook 脚本。
+- 不扫描整个源码仓库来自动学习代码。
+- 不修改项目源码文件。
+- 不 attach 已经运行的外部终端窗口。
 
-The memory layer is local-only and uses controlled main-process IPC for exports and cleanup. It does not call AI APIs, run hook scripts, scan source files, modify project files, or attach already-running external terminal windows.
+## 开发命令
 
-Detailed design: `docs/CLI_DECK_MEMORY_PRD.md`.
+```bash
+npm test
+npm start
+```
+
+Windows 构建：
+
+```powershell
+npm.cmd run build:dir
+```
+
+macOS 目录构建：
+
+```bash
+npm run build:mac
+```
+
+## 仓库内容说明
+
+应该提交到 GitHub：
+
+- `src/`
+- `docs/`
+- `scripts/`
+- `README.md`
+- `LICENSE`
+- `package.json`
+- `package-lock.json`
+- `.gitignore`
+
+不应该提交：
+
+- `node_modules/`
+- `dist/`
+- `.electron-cache/`
+- `.electron-builder-cache/`
+- `.localappdata/`
+- `.npm-cache/`
+- `.home/`
+- `.env*`
+- 日志和临时文件
+
+## 许可证
+
+Apache-2.0

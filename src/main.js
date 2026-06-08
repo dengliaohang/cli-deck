@@ -92,6 +92,10 @@ function quotePowerShellString(value) {
   return `'${String(value).replaceAll("'", "''")}'`;
 }
 
+function quotePosixShellString(value) {
+  return `'${String(value).replaceAll("'", "'\"'\"'")}'`;
+}
+
 function splitCommandLine(value) {
   const result = [];
   const pattern = /"([^"]*)"|'([^']*)'|[^\s]+/g;
@@ -116,6 +120,34 @@ function buildPowerShellLaunch(command, args) {
 
   const quoted = [quotePowerShellString(resolvedCommand), ...resolvedArgs.map(quotePowerShellString)];
   return `& ${quoted.join(' ')}; if ($null -ne $global:LASTEXITCODE) { exit $global:LASTEXITCODE }`;
+}
+
+function buildPosixShellLaunch(command, args) {
+  let resolvedCommand = String(command || '').trim();
+  let resolvedArgs = Array.isArray(args) ? [...args] : [];
+
+  if (resolvedArgs.length === 0 && /\s/.test(resolvedCommand)) {
+    const parts = splitCommandLine(resolvedCommand);
+    resolvedCommand = parts.shift() || resolvedCommand;
+    resolvedArgs = parts;
+  }
+
+  return [resolvedCommand, ...resolvedArgs].map(quotePosixShellString).join(' ');
+}
+
+function getPtyLaunch(command, args) {
+  if (process.platform === 'win32') {
+    return {
+      file: 'powershell.exe',
+      args: ['-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', buildPowerShellLaunch(command, args)]
+    };
+  }
+
+  const shell = process.env.SHELL || (process.platform === 'darwin' ? '/bin/zsh' : '/bin/sh');
+  return {
+    file: shell,
+    args: ['-lc', buildPosixShellLaunch(command, args)]
+  };
 }
 
 function getMemoryRoot() {
@@ -949,12 +981,12 @@ function spawnSession(config) {
   const args = Array.isArray(config.args) ? config.args : [];
   const cwd = normalizeCwd(config.cwd || os.homedir());
   const title = buildSessionTitle(config, cwd);
-  const commandLine = buildPowerShellLaunch(config.command, args);
+  const launch = getPtyLaunch(config.command, args);
   const recorder = createSessionRecorder({ id, title, command: config.command, args, cwd });
 
   let proc;
   try {
-    proc = pty.spawn('powershell.exe', ['-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', commandLine], {
+    proc = pty.spawn(launch.file, launch.args, {
       name: 'xterm-256color',
       cols,
       rows,

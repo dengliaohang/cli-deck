@@ -12,6 +12,23 @@ function splitArgs(value) {
   return result;
 }
 
+function quotePosixShellString(value) {
+  return `'${String(value).replaceAll("'", "'\"'\"'")}'`;
+}
+
+function buildPosixShellLaunch(command, args) {
+  let resolvedCommand = String(command || '').trim();
+  let resolvedArgs = Array.isArray(args) ? [...args] : [];
+
+  if (resolvedArgs.length === 0 && /\s/.test(resolvedCommand)) {
+    const parts = splitArgs(resolvedCommand);
+    resolvedCommand = parts.shift() || resolvedCommand;
+    resolvedArgs = parts;
+  }
+
+  return [resolvedCommand, ...resolvedArgs].map(quotePosixShellString).join(' ');
+}
+
 function parsePresetsText(value) {
   return String(value || '')
     .split('\n')
@@ -132,6 +149,8 @@ assert.deepEqual(presets, [
   { name: 'Claude', command: 'claude', args: ['hello world'] },
   { name: 'opencode', command: 'opencode', args: [] }
 ]);
+assert.equal(buildPosixShellLaunch('codex', ['--prompt', "don't stop"]), `'codex' '--prompt' 'don'"'"'t stop'`);
+assert.equal(buildPosixShellLaunch('codex --model gpt-5', []), `'codex' '--model' 'gpt-5'`);
 assert.equal(summarizeCwd('C:/development/workspace/tools'), 'workspace/tools');
 assert.equal(buildSessionTitle({ name: 'Codex', cwd: 'C:/development/workspace/tools' }), 'Codex — workspace/tools');
 assert.equal(
