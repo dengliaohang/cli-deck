@@ -133,7 +133,7 @@ Default policy:
 
 ## Orchestrator Swarm Scheduling
 
-Dispatch first sends the user objective to the selected Brain CLI as normal input. After normal reasoning, the brain can make CLI Deck act by emitting a complete `CLI_DECK_COMMAND_ACTUAL` or `CLI_DECK_PLAN_ACTUAL` block.
+Dispatch sends the user objective plus a short scheduling instruction to the selected Brain CLI. For coding, build, test, or review objectives, the Brain should first emit a complete `CLI_DECK_COMMAND_ACTUAL` or `CLI_DECK_PLAN_ACTUAL` block so CLI Deck can dispatch workers.
 
 Example dispatch command:
 

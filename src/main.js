@@ -317,11 +317,13 @@ function isMemoryCommandCandidate(value) {
   const lower = command.toLowerCase();
   return !(
     lower.includes('you are the selected cli deck swarm brain') ||
+    lower.includes('you are the cli deck swarm brain') ||
     lower.includes('cli deck swarm task') ||
     lower.includes('cli_deck_command_actual') ||
     lower.includes('cli_deck_plan_actual') ||
     lower.includes('cli_deck_result_actual') ||
-    lower.startsWith('objective:')
+    lower.startsWith('objective:') ||
+    lower.startsWith('user objective:')
   );
 }
 

@@ -618,7 +618,14 @@ function submitBrainPrompt(sessionId, prompt) {
 }
 
 function buildBrainObjectivePrompt(objective) {
-  return objective;
+  return [
+    `User objective: ${objective}`,
+    'You are the CLI Deck swarm brain.',
+    'For coding/build/test/review tasks, delegate first instead of solving alone.',
+    'To delegate, output an actual command block with markers CLI_DECK_COMMAND_ACTUAL_START and CLI_DECK_COMMAND_ACTUAL_END.',
+    'Use exactly these field names: action: dispatch; capability: implement; task: <specific worker task>.',
+    'For simple chat, answer normally.'
+  ].join(' ');
 }
 
 function buildWorkerPrompt(task, session) {

@@ -107,11 +107,13 @@ function isMemoryCommandCandidate(value) {
   const lower = command.toLowerCase();
   return !(
     lower.includes('you are the selected cli deck swarm brain') ||
+    lower.includes('you are the cli deck swarm brain') ||
     lower.includes('cli deck swarm task') ||
     lower.includes('cli_deck_command_actual') ||
     lower.includes('cli_deck_plan_actual') ||
     lower.includes('cli_deck_result_actual') ||
-    lower.startsWith('objective:')
+    lower.startsWith('objective:') ||
+    lower.startsWith('user objective:')
   );
 }
 
@@ -457,6 +459,7 @@ assert.deepEqual(buildPastedPromptWrites('hello'), ['\x1b[200~hello\x1b[201~', '
 assert.equal(compactPromptText('hello\n\n world  '), 'hello world');
 assert.equal(isMemoryCommandCandidate('npm test'), true);
 assert.equal(isMemoryCommandCandidate('[IObjective: hello You are the selected CLI Deck swarm brain.'), false);
+assert.equal(isMemoryCommandCandidate('User objective: hello You are the CLI Deck swarm brain.'), false);
 assert.equal(isMemoryCommandCandidate('CLI_DECK_COMMAND_ACTUAL_START action: status CLI_DECK_COMMAND_ACTUAL_END'), false);
 assert.equal(chooseNextCapability({ status: 'done' }, { capability: 'implement' }), 'review');
 assert.equal(chooseNextCapability({ status: 'done' }, { capability: 'review' }), 'test');

@@ -113,10 +113,10 @@ MVP 能力：
 - Custom: custom
 - 用户输入 swarm objective 后，先发送给选中的 Brain session 生成计划。
 - 如果没有任何 live CLI session，Dispatch 会弹出创建 Brain 的对话框，让用户选择 CLI 类型、工作目录和 Memory 选项；Brain 启动成功后继续处理刚才的 objective。
-- Brain 窗口接收用户原始 objective 并正常回答；当 Brain 主动输出 `CLI_DECK_COMMAND_ACTUAL_START` / `CLI_DECK_COMMAND_ACTUAL_END` 或 `CLI_DECK_PLAN_ACTUAL_START` / `CLI_DECK_PLAN_ACTUAL_END` 协议块后，CLI Deck 才执行调度动作。
+- Brain 窗口接收用户 objective 和精简调度指令；当 Brain 输出 `CLI_DECK_COMMAND_ACTUAL_START` / `CLI_DECK_COMMAND_ACTUAL_END` 或 `CLI_DECK_PLAN_ACTUAL_START` / `CLI_DECK_PLAN_ACTUAL_END` 协议块后，CLI Deck 才执行调度动作。
 - 未选择 Brain 时，CLI Deck 会保留当前 objective 并弹出创建 Brain 对话框，避免把用户原始对话误派成 worker 任务。
 - Auto dispatch 开启时，自动选择可用 worker 并写入任务 prompt。
-- 发给 Brain 的 objective 会压缩为单行普通输入并单独发送 Enter，避免调度说明污染普通对话。
+- 发给 Brain 的 prompt 会压缩为单行普通输入并单独发送 Enter；调度说明必须保持短文本，避免污染普通对话或卡住 TUI 输入。
 - Memory 的 frequent commands 会过滤 CLI Deck 注入的 objective / command / plan / result prompt，避免调度文本出现在 Common commands。
 - 发给 worker 的多行任务 prompt 使用 bracketed paste 包裹，再单独发送 Enter，适配 Codex / Claude 这类 TUI 的多行输入提交。
 - Brain command 支持 `dispatch` / `status` / `cancel` / `retry` / `message`。
