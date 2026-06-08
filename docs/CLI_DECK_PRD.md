@@ -100,6 +100,21 @@ History 支持：
 - 删除 project memory
 - 清理过期 raw logs
 
+### 4.4 Goal 目标记录
+
+Goal 是按 working directory 保存的轻量工作目标记录，不要求用户先写完整 PRD。
+
+第一版只要求用户输入一句话目标，可选填写 notes。后续工作过程中，用户可以手动添加任务、关联当前 session、记录产出，并导出 Markdown。
+
+记录内容：
+
+- title
+- notes
+- task list
+- attached sessions
+- output notes
+- Markdown export
+
 ## 5. 非目标
 
 - 不 attach 已经运行的外部终端窗口。
@@ -242,6 +257,8 @@ fallback: /bin/sh
 <userData>/memory/
   projects/
     <cwd-hash>.json
+  goals/
+    <cwd-hash>.json
   sessions/
     <YYYY-MM-DD>/
       <session-id>.log
@@ -249,6 +266,7 @@ fallback: /bin/sh
   exports/
     <project-name>-<hash>.md
     <project-name>-<hash>.json
+    <project-name>-goal-<hash>.md
 ```
 
 项目 key：
@@ -263,6 +281,7 @@ Retention：
 - failed raw log 默认 60 天
 - 单 session raw log 默认 20 MB
 - session JSON 和 project memory 默认保留
+- goal JSON 按 cwd hash 保留，内容来自用户主动填写和手动关联
 
 ### 6.7 IPC 设计
 
@@ -279,6 +298,14 @@ Renderer -> Main：
 - `memory:exportProject({ projectKey, format })`
 - `memory:deleteProject({ projectKey, deleteSessionFiles })`
 - `memory:cleanupRawLogs`
+- `goal:get(cwd)`
+- `goal:save({ cwd, patch })`
+- `goal:addTask({ cwd, title })`
+- `goal:updateTask({ cwd, taskId, patch })`
+- `goal:deleteTask({ cwd, taskId })`
+- `goal:attachSession({ cwd, sessionId })`
+- `goal:addOutput({ cwd, output })`
+- `goal:export(cwd)`
 - `terminal:create(config)`
 - `terminal:input`
 - `terminal:resize`
@@ -299,6 +326,7 @@ Main -> Renderer：
   - Settings
   - Sessions
   - Presets
+  - Goal
   - Memory
 - 右侧 workspace：
   - toolbar
@@ -321,12 +349,26 @@ History：
 - 点击项目进入详情
 - 支持导出、打开日志、重新启动项目 session
 
+### 7.4 Goal 面板
+
+Goal 面板跟随当前 active session 的 cwd。没有 active session 时，使用默认 working directory。
+
+交互：
+
+- Set：创建或编辑一句话目标和 notes
+- Add task：添加任务
+- 任务状态：Todo -> Doing -> Done -> Todo，Blocked 可恢复为 Doing
+- Attach session：把当前 active session 关联到目标
+- Add output：手动记录产出
+- Export MD：导出目标、任务、session 和产出
+
 ## 8. 安全与隐私
 
 - 默认本地存储，不联网。
 - 不上传 raw log。
 - 不在 renderer 中直接写文件。
 - Memory 开关允许用户在敏感 session 中禁用持久化。
+- Goal 只保存用户主动填写、手动添加或手动关联的信息。
 - raw log 有大小上限和过期清理。
 - 删除 project memory 不默认删除 raw session files，避免误删排障材料。
 
@@ -344,6 +386,8 @@ History：
   - 退出后写 summary
   - 更新 project memory
   - renderer 收到 `memory:updated`
+- 创建 Goal 时只需要一句话 title。
+- Goal 支持添加任务、切换状态、关联当前 session、添加产出、导出 Markdown。
 - Windows `npm.cmd run build:dir` 成功。
 - `npm.cmd test` 成功。
 - `node --check` 对 main/preload/renderer/scripts 成功。
@@ -354,4 +398,5 @@ History：
 - 项目详情增加完整 session JSON 查看。
 - macOS 正式分发：图标、签名、公证、arm64/x64 验证。
 - Linux 打包目标验证。
+- Goal 后续可从 session 结束摘要自动建议任务状态和产出，但默认不自动写入。
 - 可选 hook 系统，但必须保持默认关闭和本地可控。

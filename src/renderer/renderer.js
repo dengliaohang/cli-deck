@@ -20,7 +20,9 @@ const state = {
   },
   historyProjects: [],
   selectedProjectKey: null,
-  config: null
+  config: null,
+  goal: null,
+  goalRequestId: 0
 };
 
 const elements = {
@@ -49,6 +51,14 @@ const elements = {
   memoryCurrentButton: document.querySelector('#memory-current-button'),
   memoryHistoryButton: document.querySelector('#memory-history-button'),
   memoryCard: document.querySelector('#memory-card'),
+  goalEditButton: document.querySelector('#goal-edit-button'),
+  goalCard: document.querySelector('#goal-card'),
+  goalDialog: document.querySelector('#goal-dialog'),
+  goalForm: document.querySelector('#goal-form'),
+  goalCloseButton: document.querySelector('#goal-close-button'),
+  goalCancelButton: document.querySelector('#goal-cancel-button'),
+  goalTitleInput: document.querySelector('#goal-title'),
+  goalNotesInput: document.querySelector('#goal-notes'),
   settingsDialog: document.querySelector('#settings-dialog'),
   settingsForm: document.querySelector('#settings-form'),
   settingsCloseButton: document.querySelector('#settings-close-button'),
@@ -527,6 +537,220 @@ function renderHistoryList(projects) {
   elements.memoryCard.append(list);
 }
 
+function getGoalCwd() {
+  const active = state.sessions.get(state.activeId);
+  return active?.cwd || state.defaultCwd;
+}
+
+function renderGoalEmpty(message) {
+  elements.goalCard.replaceChildren();
+  appendText(elements.goalCard, 'p', 'memory-empty', message);
+}
+
+function formatGoalStatus(value) {
+  const map = {
+    todo: 'Todo',
+    doing: 'Doing',
+    blocked: 'Blocked',
+    done: 'Done'
+  };
+  return map[value] || value || 'Todo';
+}
+
+function nextGoalTaskStatus(value) {
+  const order = ['todo', 'doing', 'done'];
+  const index = order.indexOf(value);
+  if (value === 'blocked') {
+    return 'doing';
+  }
+  return order[(index + 1) % order.length] || 'todo';
+}
+
+function renderGoal(goal) {
+  state.goal = goal;
+  elements.goalCard.replaceChildren();
+
+  if (!goal?.title) {
+    renderGoalEmpty('Create a one-line goal to track tasks and outputs for this project.');
+    return;
+  }
+
+  const header = document.createElement('div');
+  header.className = 'goal-header';
+  appendText(header, 'p', 'goal-title', goal.title);
+  appendText(header, 'span', 'goal-status', goal.status || 'active');
+  elements.goalCard.append(header);
+
+  if (goal.notes) {
+    appendText(elements.goalCard, 'p', 'goal-notes', goal.notes);
+  }
+
+  const actions = document.createElement('div');
+  actions.className = 'goal-actions';
+  appendButton(actions, 'tiny-button', 'Add task', () => addGoalTask());
+  appendButton(actions, 'tiny-button', 'Attach session', () => attachActiveSessionToGoal());
+  appendButton(actions, 'tiny-button', 'Add output', () => addGoalOutput());
+  appendButton(actions, 'tiny-button', 'Export MD', () => exportCurrentGoal());
+  elements.goalCard.append(actions);
+
+  appendText(elements.goalCard, 'p', 'goal-section-title', 'Tasks');
+  if (!goal.tasks.length) {
+    appendText(elements.goalCard, 'p', 'memory-empty', 'No tasks yet.');
+  } else {
+    for (const task of goal.tasks) {
+      const row = document.createElement('div');
+      row.className = `goal-task goal-task-${task.status || 'todo'}`;
+
+      const left = document.createElement('div');
+      appendText(left, 'p', 'goal-task-title', task.title);
+      if (task.notes) {
+        appendText(left, 'p', 'goal-notes', task.notes);
+      }
+      row.append(left);
+
+      const taskActions = document.createElement('div');
+      taskActions.className = 'goal-task-actions';
+      appendButton(taskActions, 'tiny-button', formatGoalStatus(task.status), () =>
+        updateGoalTask(task.id, { status: nextGoalTaskStatus(task.status) })
+      );
+      appendButton(taskActions, 'tiny-button', 'Block', () => updateGoalTask(task.id, { status: 'blocked' }));
+      appendButton(taskActions, 'tiny-button danger-text', 'Del', () => deleteGoalTask(task.id));
+      row.append(taskActions);
+      elements.goalCard.append(row);
+    }
+  }
+
+  appendText(elements.goalCard, 'p', 'goal-section-title', 'Sessions');
+  if (!goal.sessions.length) {
+    appendText(elements.goalCard, 'p', 'memory-empty', 'No attached sessions.');
+  } else {
+    for (const session of goal.sessions.slice(0, 4)) {
+      appendText(elements.goalCard, 'p', 'goal-session', `${session.title || session.id}: ${session.commandLine || ''}`);
+    }
+  }
+
+  appendText(elements.goalCard, 'p', 'goal-section-title', 'Outputs');
+  if (!goal.outputs.length) {
+    appendText(elements.goalCard, 'p', 'memory-empty', 'No outputs yet.');
+  } else {
+    for (const output of goal.outputs.slice(0, 4)) {
+      appendText(elements.goalCard, 'p', 'goal-output', `[${output.type}] ${output.title}`);
+    }
+  }
+}
+
+async function refreshGoalPanel() {
+  const cwd = getGoalCwd();
+  const requestId = ++state.goalRequestId;
+
+  if (!cwd) {
+    renderGoalEmpty('Set a default working directory or start a session to create a goal.');
+    return;
+  }
+
+  try {
+    const goal = await window.cliDeck.getGoal(cwd);
+    if (requestId === state.goalRequestId) {
+      renderGoal(goal);
+    }
+  } catch (error) {
+    if (requestId === state.goalRequestId) {
+      renderGoalEmpty(`Goal unavailable: ${error.message}`);
+    }
+  }
+}
+
+function openGoalDialog() {
+  const goal = state.goal || {};
+  elements.goalTitleInput.value = goal.title || '';
+  elements.goalNotesInput.value = goal.notes || '';
+  elements.goalDialog.showModal();
+  window.setTimeout(() => elements.goalTitleInput.focus(), 0);
+}
+
+async function saveGoalFromDialog() {
+  const cwd = getGoalCwd();
+  const title = elements.goalTitleInput.value.trim();
+  if (!cwd || !title) {
+    return;
+  }
+  const goal = await window.cliDeck.saveGoal(cwd, {
+    title,
+    notes: elements.goalNotesInput.value.trim(),
+    status: 'active'
+  });
+  elements.goalDialog.close();
+  renderGoal(goal);
+  setStatus('Goal saved');
+}
+
+async function addGoalTask() {
+  const title = window.prompt('Task title');
+  if (!title?.trim()) {
+    return;
+  }
+  try {
+    renderGoal(await window.cliDeck.addGoalTask(getGoalCwd(), title.trim()));
+  } catch (error) {
+    setStatus(`Add task failed: ${error.message}`);
+  }
+}
+
+async function updateGoalTask(taskId, patch) {
+  try {
+    renderGoal(await window.cliDeck.updateGoalTask(getGoalCwd(), taskId, patch));
+  } catch (error) {
+    setStatus(`Update task failed: ${error.message}`);
+  }
+}
+
+async function deleteGoalTask(taskId) {
+  if (!window.confirm('Delete this task?')) {
+    return;
+  }
+  try {
+    renderGoal(await window.cliDeck.deleteGoalTask(getGoalCwd(), taskId));
+  } catch (error) {
+    setStatus(`Delete task failed: ${error.message}`);
+  }
+}
+
+async function attachActiveSessionToGoal() {
+  const active = state.sessions.get(state.activeId);
+  if (!active) {
+    setStatus('No active session to attach');
+    return;
+  }
+  try {
+    renderGoal(await window.cliDeck.attachGoalSession(getGoalCwd(), active.id));
+    setStatus('Session attached');
+  } catch (error) {
+    setStatus(`Attach failed: ${error.message}`);
+  }
+}
+
+async function addGoalOutput() {
+  const title = window.prompt('Output title');
+  if (!title?.trim()) {
+    return;
+  }
+  try {
+    renderGoal(await window.cliDeck.addGoalOutput(getGoalCwd(), { type: 'note', title: title.trim() }));
+  } catch (error) {
+    setStatus(`Add output failed: ${error.message}`);
+  }
+}
+
+async function exportCurrentGoal() {
+  try {
+    const result = await window.cliDeck.exportGoal(getGoalCwd());
+    setStatus(`Exported ${result.filePath}`);
+    await openPathSafely(result.filePath);
+  } catch (error) {
+    setStatus(`Export failed: ${error.message}`);
+  }
+}
+
 async function refreshHistoryPanel() {
   state.selectedProjectKey = null;
   const requestId = ++state.historyRequestId;
@@ -660,6 +884,7 @@ function setActiveSession(id) {
   if (state.memoryMode === 'current') {
     refreshMemoryPanel();
   }
+  refreshGoalPanel();
 }
 
 function updateToolbarState() {
@@ -936,6 +1161,7 @@ async function startSession(config) {
   term.onData((data) => window.cliDeck.writeTerminal(session.id, data));
   setActiveSession(session.id);
   setMemoryMode('current');
+  refreshGoalPanel();
   syncLayout();
 }
 
@@ -985,6 +1211,7 @@ function applyConfig(config) {
   state.defaultCwd = config.defaultCwd || '';
   elements.cwdInput.value = state.defaultCwd;
   renderPresets();
+  refreshGoalPanel();
 }
 
 function removeSession(id) {
@@ -1105,8 +1332,11 @@ elements.openCwdButton.addEventListener('click', openActiveCwd);
 elements.closeStoppedButton.addEventListener('click', closeStoppedSessions);
 elements.memoryCurrentButton.addEventListener('click', () => setMemoryMode('current'));
 elements.memoryHistoryButton.addEventListener('click', () => setMemoryMode('history'));
+elements.goalEditButton.addEventListener('click', openGoalDialog);
 elements.dialogCloseButton.addEventListener('click', () => elements.dialog.close());
 elements.cancelButton.addEventListener('click', () => elements.dialog.close());
+elements.goalCloseButton.addEventListener('click', () => elements.goalDialog.close());
+elements.goalCancelButton.addEventListener('click', () => elements.goalDialog.close());
 elements.settingsCloseButton.addEventListener('click', () => elements.settingsDialog.close());
 elements.settingsCancelButton.addEventListener('click', () => elements.settingsDialog.close());
 elements.browseCwdButton.addEventListener('click', async () => {
@@ -1143,6 +1373,13 @@ elements.settingsForm.addEventListener('submit', (event) => {
   event.preventDefault();
   saveSettings().catch((error) => {
     setStatus(`Settings failed: ${error.message}`);
+  });
+});
+
+elements.goalForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  saveGoalFromDialog().catch((error) => {
+    setStatus(`Goal save failed: ${error.message}`);
   });
 });
 
