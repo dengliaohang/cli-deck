@@ -148,7 +148,7 @@ MVP 能力：
 - 如果没有可用 Brain，CLI Deck 按结果自动排队下一步：
   - `done` / `needs_review` -> review
   - `needs_test` -> test
-  - `blocked` -> research
+  - `blocked` 停留在原 task，等待人工 Retry 或补充上下文，不自动生成 research follow-up
 
 Worker 结果协议：
 

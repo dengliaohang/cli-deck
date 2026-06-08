@@ -119,7 +119,7 @@ const headlessWorkers = [
     exited: false,
     headless: true,
     adapter: 'codexExec',
-    capabilities: ['implement', 'test', 'review'],
+    capabilities: ['implement', 'test', 'review', 'research', 'plan', 'custom'],
     orchestratorRole: 'worker'
   }
 ];
@@ -1050,7 +1050,7 @@ function startDispatcherLoop() {
 function chooseNextCapability(result, completedTask = null) {
   const completedCapability = completedTask?.capability || '';
   if (result.status === 'blocked') {
-    return 'research';
+    return '';
   }
   if (result.status === 'needs_review') {
     return 'review';
@@ -1063,9 +1063,6 @@ function chooseNextCapability(result, completedTask = null) {
   }
   if (result.status === 'done' && completedCapability === 'review') {
     return 'test';
-  }
-  if (result.status === 'done' && completedCapability === 'research') {
-    return 'implement';
   }
   return '';
 }

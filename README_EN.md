@@ -145,6 +145,8 @@ The Task Board is persisted under Electron `userData` as `orchestrator-board.jso
 
 When Auto is enabled, the Dispatcher continuously scans the board. `ready` tasks are assigned by capability; tasks blocked by "no worker" or app restart are automatically retried once a matching worker appears. Tasks blocked for human decisions are not retried automatically.
 
+Worker failures that produce `blocked` do not spawn research follow-up tasks automatically. The failure stays on the original task with output and a Retry action, avoiding runaway task chains.
+
 For coding, build, test, or review objectives, Dispatch first creates a worker task directly in CLI Deck and assigns it by capability; worker results are then reported back to the Brain for follow-up scheduling. Plain chat objectives are sent to the Brain directly.
 
 Example dispatch command:

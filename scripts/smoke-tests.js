@@ -405,7 +405,7 @@ function compactPromptText(value) {
 function chooseNextCapability(result, completedTask = null) {
   const completedCapability = completedTask?.capability || '';
   if (result.status === 'blocked') {
-    return 'research';
+    return '';
   }
   if (result.status === 'needs_review') {
     return 'review';
@@ -564,7 +564,7 @@ const workerSessions = [
 assert.equal(findTestSessionForCapability(workerSessions, 'implement', 'brain-1').id, 'worker-1');
 assert.equal(
   getTestWorkerSessionsWithHeadless(brainOnlySessions, 'brain-1', [
-    { id: 'headless-codex-exec', capabilities: ['implement'] }
+    { id: 'headless-codex-exec', capabilities: ['implement', 'test', 'review', 'research', 'plan', 'custom'] }
   ])[0].id,
   'headless-codex-exec'
 );
@@ -644,7 +644,7 @@ assert.equal(isMemoryCommandCandidate('User objective: hello You are the CLI Dec
 assert.equal(isMemoryCommandCandidate('CLI_DECK_COMMAND_ACTUAL_START action: status CLI_DECK_COMMAND_ACTUAL_END'), false);
 assert.equal(chooseNextCapability({ status: 'done' }, { capability: 'implement' }), 'review');
 assert.equal(chooseNextCapability({ status: 'done' }, { capability: 'review' }), 'test');
-assert.equal(chooseNextCapability({ status: 'blocked' }), 'research');
+assert.equal(chooseNextCapability({ status: 'blocked' }), '');
 assert.equal(chooseNextCapability({ status: 'needs_test' }), 'test');
 
 const board = { tasks: [], runs: [], nextTaskNumber: 1, nextRunNumber: 1 };
