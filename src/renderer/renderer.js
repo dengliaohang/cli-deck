@@ -599,26 +599,6 @@ function writeSubmittedPrompt(sessionId, prompt) {
   window.cliDeck.writeTerminal(sessionId, wrapped);
 }
 
-function buildBrainPrompt(objective) {
-  return [
-    '',
-    'CLI Deck swarm brain task',
-    '',
-    'You are the selected swarm brain. Break the objective into executable worker tasks.',
-    'Return exactly one plan block using this protocol:',
-    '',
-    'CLI_DECK_PLAN_START',
-    'task: implement | short task for an implement-capable worker',
-    'task: review | short task for a review-capable worker',
-    'task: test | short task for a test-capable worker',
-    'CLI_DECK_PLAN_END',
-    '',
-    'Objective:',
-    objective,
-    ''
-  ].join('\n');
-}
-
 function buildWorkerPrompt(task, session) {
   return [
     '',
@@ -628,17 +608,8 @@ function buildWorkerPrompt(task, session) {
     `Required capability: ${task.capability}`,
     `Your session capabilities: ${formatCapabilities(session.capabilities)}`,
     '',
-    'Work on this task. When finished, report exactly one result block using this protocol:',
-    '',
-    'CLI_DECK_RESULT_START',
-    `task_id: ${task.id}`,
-    'status: done | blocked | needs_review | needs_test',
-    'summary: one sentence summary',
-    'details:',
-    '- important detail',
-    'next:',
-    '- suggested next task, or none',
-    'CLI_DECK_RESULT_END',
+    'Work on this task normally and summarize the result for the user.',
+    `Keep this task id in mind if you intentionally emit a CLI Deck routing result later: ${task.id}`,
     '',
     'Task:',
     task.title,
@@ -741,7 +712,14 @@ function parseResultBlock(block) {
   let section = '';
 
   for (const line of lines) {
-    if (line === 'CLI_DECK_RESULT_START' || line === 'CLI_DECK_RESULT_END') {
+    if (
+      line === 'CLI_DECK_RESULT_START' ||
+      line === 'CLI_DECK_RESULT_END' ||
+      line === 'CLI_DECK_RESULT_ACTUAL_START' ||
+      line === 'CLI_DECK_RESULT_ACTUAL_END' ||
+      line === 'CLI_DECK_PLAN_ACTUAL_START' ||
+      line === 'CLI_DECK_PLAN_ACTUAL_END'
+    ) {
       continue;
     }
     const match = line.match(/^([a-z_]+):\s*(.*)$/i);
@@ -784,25 +762,25 @@ function consumeResultBlocks(session, data) {
   session.orchestratorBuffer = `${session.orchestratorBuffer || ''}${data}`;
   const events = [];
 
-  let start = session.orchestratorBuffer.indexOf('CLI_DECK_PLAN_START');
-  let end = session.orchestratorBuffer.indexOf('CLI_DECK_PLAN_END');
+  let start = session.orchestratorBuffer.indexOf('CLI_DECK_PLAN_ACTUAL_START');
+  let end = session.orchestratorBuffer.indexOf('CLI_DECK_PLAN_ACTUAL_END');
   while (start !== -1 && end !== -1 && end > start) {
-    const blockEnd = end + 'CLI_DECK_PLAN_END'.length;
+    const blockEnd = end + 'CLI_DECK_PLAN_ACTUAL_END'.length;
     events.push({ type: 'plan', tasks: parsePlanBlock(session.orchestratorBuffer.slice(start, blockEnd)) });
     session.orchestratorBuffer = session.orchestratorBuffer.slice(blockEnd);
-    start = session.orchestratorBuffer.indexOf('CLI_DECK_PLAN_START');
-    end = session.orchestratorBuffer.indexOf('CLI_DECK_PLAN_END');
+    start = session.orchestratorBuffer.indexOf('CLI_DECK_PLAN_ACTUAL_START');
+    end = session.orchestratorBuffer.indexOf('CLI_DECK_PLAN_ACTUAL_END');
   }
 
-  start = session.orchestratorBuffer.indexOf('CLI_DECK_RESULT_START');
-  end = session.orchestratorBuffer.indexOf('CLI_DECK_RESULT_END');
+  start = session.orchestratorBuffer.indexOf('CLI_DECK_RESULT_ACTUAL_START');
+  end = session.orchestratorBuffer.indexOf('CLI_DECK_RESULT_ACTUAL_END');
 
   while (start !== -1 && end !== -1 && end > start) {
-    const blockEnd = end + 'CLI_DECK_RESULT_END'.length;
+    const blockEnd = end + 'CLI_DECK_RESULT_ACTUAL_END'.length;
     events.push({ type: 'result', result: parseResultBlock(session.orchestratorBuffer.slice(start, blockEnd)) });
     session.orchestratorBuffer = session.orchestratorBuffer.slice(blockEnd);
-    start = session.orchestratorBuffer.indexOf('CLI_DECK_RESULT_START');
-    end = session.orchestratorBuffer.indexOf('CLI_DECK_RESULT_END');
+    start = session.orchestratorBuffer.indexOf('CLI_DECK_RESULT_ACTUAL_START');
+    end = session.orchestratorBuffer.indexOf('CLI_DECK_RESULT_ACTUAL_END');
   }
 
   if (session.orchestratorBuffer.length > 12000) {
@@ -826,6 +804,9 @@ function handleBrainPlan(session, plannedTasks) {
 }
 
 function handleWorkerResult(session, result) {
+  if (!result.taskId) {
+    return;
+  }
   const task = state.orchestrator.tasks.find((item) => item.id === result.taskId);
   if (task) {
     task.status = result.status === 'blocked' ? 'blocked' : 'done';
@@ -858,7 +839,7 @@ function submitSwarmObjective(value) {
 
   const brain = state.sessions.get(state.orchestrator.brainSessionId);
   if (brain && !brain.exited) {
-    writeSubmittedPrompt(brain.id, buildBrainPrompt(objective));
+    writeSubmittedPrompt(brain.id, objective);
     addOrchestratorMessage('brain', `Sent objective to brain: ${brain.title}`);
     return;
   }

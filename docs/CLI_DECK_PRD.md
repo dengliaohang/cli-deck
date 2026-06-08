@@ -113,11 +113,11 @@ MVP 能力：
 - Custom: custom
 - 用户输入 swarm objective 后，先发送给选中的 Brain session 生成计划。
 - 如果没有任何 live CLI session，Dispatch 会弹出创建 Brain 的对话框，让用户选择 CLI 类型、工作目录和 Memory 选项；Brain 启动成功后继续处理刚才的 objective。
-- Brain 输出 `CLI_DECK_PLAN_START` / `CLI_DECK_PLAN_END` 协议块后，CLI Deck 创建 worker tasks。
+- Brain 窗口先接收用户原始输入并正常回答；只有输出 `CLI_DECK_PLAN_ACTUAL_START` / `CLI_DECK_PLAN_ACTUAL_END` 协议块后，CLI Deck 才创建 worker tasks。
 - 未选择 Brain 时，CLI Deck 退化为直接创建一个 implement task。
 - Auto dispatch 开启时，自动选择可用 worker 并写入任务 prompt。
 - 派发 prompt 使用 bracketed paste 包裹并发送 Enter，适配 Codex / Claude 这类 TUI 的多行输入提交。
-- worker 完成后输出 `CLI_DECK_RESULT_START` / `CLI_DECK_RESULT_END` 协议块。
+- worker 完成后可输出 `CLI_DECK_RESULT_ACTUAL_START` / `CLI_DECK_RESULT_ACTUAL_END` 协议块触发后续调度。
 - CLI Deck 解析结果后更新任务状态，并按结果自动排队下一步：
 - `done` / `needs_review` -> review
 - `needs_test` -> test
@@ -126,7 +126,7 @@ MVP 能力：
 Worker 结果协议：
 
 ```text
-CLI_DECK_RESULT_START
+CLI_DECK_RESULT_ACTUAL_START
 task_id: task-1
 status: done | blocked | needs_review | needs_test
 summary: one sentence summary
@@ -134,17 +134,17 @@ details:
 - important detail
 next:
 - suggested next task, or none
-CLI_DECK_RESULT_END
+CLI_DECK_RESULT_ACTUAL_END
 ```
 
 Brain 计划协议：
 
 ```text
-CLI_DECK_PLAN_START
+CLI_DECK_PLAN_ACTUAL_START
 task: implement | short task for an implement-capable worker
 task: review | short task for a review-capable worker
 task: test | short task for a test-capable worker
-CLI_DECK_PLAN_END
+CLI_DECK_PLAN_ACTUAL_END
 ```
 
 ## 5. 非目标
@@ -407,8 +407,8 @@ Orchestrator 面板在 sidebar 内展示调度目标、worker roster、任务队
   - 更新 project memory
   - renderer 收到 `memory:updated`
 - Orchestrator 能创建 objective task，并按能力派发给 live worker session。
-- Orchestrator 能把 objective 发送给选中的 Brain session，并解析 `CLI_DECK_PLAN` 协议块生成 worker tasks。
-- Orchestrator 能解析 `CLI_DECK_RESULT` 协议块，并根据 status 排队 review/test/research 后续任务。
+- Orchestrator 能把 objective 原样发送给选中的 Brain session，并只在解析到 `CLI_DECK_PLAN_ACTUAL` 协议块后生成 worker tasks。
+- Orchestrator 能解析 `CLI_DECK_RESULT_ACTUAL` 协议块，并根据 status 排队 review/test/research 后续任务。
 - Windows `npm.cmd run build:dir` 成功。
 - `npm.cmd test` 成功。
 - `node --check` 对 main/preload/renderer/scripts 成功。

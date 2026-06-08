@@ -196,7 +196,14 @@ function parseResultBlock(block) {
   let section = '';
 
   for (const line of lines) {
-    if (line === 'CLI_DECK_RESULT_START' || line === 'CLI_DECK_RESULT_END') {
+    if (
+      line === 'CLI_DECK_RESULT_START' ||
+      line === 'CLI_DECK_RESULT_END' ||
+      line === 'CLI_DECK_RESULT_ACTUAL_START' ||
+      line === 'CLI_DECK_RESULT_ACTUAL_END' ||
+      line === 'CLI_DECK_PLAN_ACTUAL_START' ||
+      line === 'CLI_DECK_PLAN_ACTUAL_END'
+    ) {
       continue;
     }
     const match = line.match(/^([a-z_]+):\s*(.*)$/i);
@@ -277,7 +284,7 @@ assert.deepEqual(inferCapabilities('codex'), ['implement', 'test', 'review']);
 assert.deepEqual(inferCapabilities('claude'), ['review', 'plan', 'research']);
 assert.deepEqual(inferCapabilities('opencode'), ['implement', 'test']);
 const parsedResult = parseResultBlock(`
-CLI_DECK_RESULT_START
+CLI_DECK_RESULT_ACTUAL_START
 task_id: task-1
 status: needs_review
 summary: implemented the feature
@@ -285,7 +292,7 @@ details:
 - changed renderer
 next:
 - review the diff
-CLI_DECK_RESULT_END
+CLI_DECK_RESULT_ACTUAL_END
 `);
 assert.equal(parsedResult.taskId, 'task-1');
 assert.equal(parsedResult.status, 'needs_review');
@@ -294,10 +301,10 @@ assert.deepEqual(parsedResult.details, ['changed renderer']);
 assert.equal(chooseNextCapability(parsedResult), 'review');
 assert.deepEqual(
   parsePlanBlock(`
-CLI_DECK_PLAN_START
+CLI_DECK_PLAN_ACTUAL_START
 task: implement | build the feature
 task: review | review the diff
-CLI_DECK_PLAN_END
+CLI_DECK_PLAN_ACTUAL_END
 `),
   [
     { capability: 'implement', title: 'build the feature' },
