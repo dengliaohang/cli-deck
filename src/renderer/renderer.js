@@ -604,24 +604,28 @@ function pasteAndSubmitPrompt(sessionId, prompt) {
   window.setTimeout(() => window.cliDeck.writeTerminal(sessionId, '\r'), 50);
 }
 
+function compactPromptText(value) {
+  return String(value || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join(' ');
+}
+
+function submitBrainPrompt(sessionId, prompt) {
+  submitTypedPrompt(sessionId, compactPromptText(prompt));
+}
+
 function buildBrainObjectivePrompt(objective) {
   return [
-    'CLI Deck swarm objective',
-    '',
-    'Objective:',
-    objective,
-    '',
-    'You are the selected swarm brain. Work normally, then control worker CLIs through CLI Deck when useful.',
-    'To make CLI Deck act, emit a command actual block. The start marker is CLI_DECK_COMMAND_ + ACTUAL_START; the end marker is CLI_DECK_COMMAND_ + ACTUAL_END.',
-    'Supported command actions:',
-    '- dispatch: fields capability and task',
-    '- status: no other fields required',
-    '- cancel: field task_id',
-    '- retry: field task_id',
-    '- message: fields target and message',
-    'You can also create a plan with marker prefix CLI_DECK_PLAN_ plus ACTUAL_START / ACTUAL_END and lines like task: capability | task text.',
+    `Objective: ${objective}`,
+    'You are the selected CLI Deck swarm brain.',
+    'Work normally and answer the user. If worker CLIs should act, emit an actual command block.',
+    'Command markers are CLI_DECK_COMMAND_ + ACTUAL_START and CLI_DECK_COMMAND_ + ACTUAL_END.',
+    'Actions: dispatch with capability/task/optional target; status; cancel with task_id; retry with task_id; message with target/message.',
+    'Plan markers are CLI_DECK_PLAN_ + ACTUAL_START and CLI_DECK_PLAN_ + ACTUAL_END with task: capability | task text.',
     'Only emit a command or plan block when CLI Deck should route work.'
-  ].join('\n');
+  ].join(' ');
 }
 
 function buildWorkerPrompt(task, session) {
@@ -957,7 +961,7 @@ function sendStatusToBrain(reason = 'status') {
     addOrchestratorMessage('blocked', `Cannot send ${reason}; no live brain selected.`);
     return false;
   }
-  pasteAndSubmitPrompt(brain.id, buildSwarmStatusSummary());
+  submitBrainPrompt(brain.id, buildSwarmStatusSummary());
   addOrchestratorMessage('brain', `Sent ${reason} to brain: ${brain.title}`);
   return true;
 }
@@ -984,7 +988,7 @@ function sendWorkerResultToBrain(workerSession, result, task) {
     '',
     'Continue coordinating the swarm. If CLI Deck should act, emit a command actual block using marker prefix CLI_DECK_COMMAND_ plus ACTUAL_START / ACTUAL_END.'
   ].join('\n');
-  pasteAndSubmitPrompt(brain.id, prompt);
+  submitBrainPrompt(brain.id, prompt);
   addOrchestratorMessage('brain', `Reported ${result.taskId} result to brain`);
   return true;
 }
@@ -1118,7 +1122,7 @@ function submitSwarmObjective(value) {
 
   const brain = state.sessions.get(state.orchestrator.brainSessionId);
   if (brain && !brain.exited) {
-    pasteAndSubmitPrompt(brain.id, buildBrainObjectivePrompt(objective));
+    submitBrainPrompt(brain.id, buildBrainObjectivePrompt(objective));
     setActiveSession(brain.id);
     addOrchestratorMessage('brain', `Sent objective to brain terminal: ${brain.title}`);
     return;

@@ -311,6 +311,14 @@ function buildPastedPromptWrites(prompt) {
   return [`\x1b[200~${prompt}\x1b[201~`, '\r'];
 }
 
+function compactPromptText(value) {
+  return String(value || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join(' ');
+}
+
 function chooseNextCapability(result, completedTask = null) {
   const completedCapability = completedTask?.capability || '';
   if (result.status === 'blocked') {
@@ -417,6 +425,7 @@ CLI_DECK_RESULT_ACTUAL_END
 );
 assert.deepEqual(buildTypedPromptWrites('hello'), ['hello', '\r']);
 assert.deepEqual(buildPastedPromptWrites('hello'), ['\x1b[200~hello\x1b[201~', '\r']);
+assert.equal(compactPromptText('hello\n\n world  '), 'hello world');
 assert.equal(chooseNextCapability({ status: 'done' }, { capability: 'implement' }), 'review');
 assert.equal(chooseNextCapability({ status: 'done' }, { capability: 'review' }), 'test');
 assert.equal(chooseNextCapability({ status: 'blocked' }), 'research');
