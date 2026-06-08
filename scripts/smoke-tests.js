@@ -479,6 +479,31 @@ function chooseObjectiveRoute(objective, liveSessionCount, hasBrain) {
   return 'create_brain';
 }
 
+function restoreTestBoard(board = {}) {
+  const restored = {
+    tasks: Array.isArray(board.tasks) ? board.tasks : [],
+    runs: Array.isArray(board.runs) ? board.runs : [],
+    events: Array.isArray(board.events) ? board.events : [],
+    nextTaskNumber: Math.max(1, Number(board.nextTaskNumber) || 1),
+    nextRunNumber: Math.max(1, Number(board.nextRunNumber) || 1)
+  };
+  for (const task of restored.tasks) {
+    if (task.status !== 'running') {
+      continue;
+    }
+    const run = restored.runs.find((item) => item.id === task.currentRunId);
+    if (run) {
+      run.status = 'blocked';
+      run.error = 'App restarted before worker reported a result.';
+    }
+    task.status = 'blocked';
+    task.blockedReason = 'App restarted before worker reported a result.';
+    task.currentRunId = null;
+    restored.events.unshift({ kind: 'reclaimed', taskId: task.id });
+  }
+  return restored;
+}
+
 const presets = parsePresetsText('Codex | codex --model gpt-5\nClaude | claude "hello world"\nopencode');
 assert.deepEqual(presets, [
   { name: 'Codex', command: 'codex', args: ['--model', 'gpt-5'] },
@@ -603,6 +628,17 @@ assert.equal(board.runs[0].status, 'blocked');
 retryTestTask(task);
 assert.equal(task.status, 'ready');
 assert.equal(task.currentRunId, null);
+const restoredBoard = restoreTestBoard({
+  tasks: [{ id: 'task-2', status: 'running', currentRunId: 'run-2' }],
+  runs: [{ id: 'run-2', status: 'running' }],
+  events: [],
+  nextTaskNumber: 3,
+  nextRunNumber: 3
+});
+assert.equal(restoredBoard.tasks[0].status, 'blocked');
+assert.equal(restoredBoard.tasks[0].currentRunId, null);
+assert.equal(restoredBoard.runs[0].status, 'blocked');
+assert.equal(restoredBoard.events[0].kind, 'reclaimed');
 
 assert.equal(classifyFailureCategory(['npm ERR! command not found']), 'command');
 assert.equal(classifyFailureCategory(['Traceback most recent call last']), 'exception');

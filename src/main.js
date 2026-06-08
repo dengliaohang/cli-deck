@@ -154,6 +154,48 @@ function getMemoryRoot() {
   return path.join(app.getPath('userData'), 'memory');
 }
 
+function getOrchestratorBoardPath() {
+  return path.join(app.getPath('userData'), 'orchestrator-board.json');
+}
+
+function sanitizeBoardList(value, limit = 300) {
+  return Array.isArray(value) ? value.slice(0, limit).filter((item) => item && typeof item === 'object') : [];
+}
+
+function loadOrchestratorBoard() {
+  const filePath = getOrchestratorBoardPath();
+  if (!fs.existsSync(filePath)) {
+    return { tasks: [], runs: [], events: [], nextTaskNumber: 1, nextRunNumber: 1 };
+  }
+  try {
+    const board = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    return {
+      tasks: sanitizeBoardList(board.tasks),
+      runs: sanitizeBoardList(board.runs),
+      events: sanitizeBoardList(board.events),
+      nextTaskNumber: Math.max(1, Number(board.nextTaskNumber) || 1),
+      nextRunNumber: Math.max(1, Number(board.nextRunNumber) || 1)
+    };
+  } catch {
+    return { tasks: [], runs: [], events: [], nextTaskNumber: 1, nextRunNumber: 1 };
+  }
+}
+
+function saveOrchestratorBoard(board = {}) {
+  const content = {
+    tasks: sanitizeBoardList(board.tasks),
+    runs: sanitizeBoardList(board.runs),
+    events: sanitizeBoardList(board.events),
+    nextTaskNumber: Math.max(1, Number(board.nextTaskNumber) || 1),
+    nextRunNumber: Math.max(1, Number(board.nextRunNumber) || 1),
+    savedAt: new Date().toISOString()
+  };
+  const filePath = getOrchestratorBoardPath();
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, `${JSON.stringify(content, null, 2)}\n`, 'utf8');
+  return content;
+}
+
 function getMemoryConfig() {
   const configured = store.get('memory') || {};
   const maxLogBytes = Number(configured.maxLogBytes);
@@ -1147,6 +1189,10 @@ ipcMain.handle('memory:deleteProject', (_event, { projectKey, deleteSessionFiles
 );
 
 ipcMain.handle('memory:cleanupRawLogs', () => cleanupExpiredRawLogs());
+
+ipcMain.handle('orchestrator:getBoard', () => loadOrchestratorBoard());
+
+ipcMain.handle('orchestrator:saveBoard', (_event, board) => saveOrchestratorBoard(board));
 
 ipcMain.handle('terminal:create', (_event, config) => {
   if (!config?.command || typeof config.command !== 'string') {

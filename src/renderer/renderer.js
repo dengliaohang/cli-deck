@@ -27,6 +27,8 @@ const state = {
     events: [],
     messages: [],
     autoDispatch: true,
+    boardLoaded: false,
+    saveTimer: null,
     nextTaskNumber: 1,
     nextRunNumber: 1,
     brainSessionId: '',
@@ -573,6 +575,63 @@ function formatCapabilities(capabilities) {
   return (capabilities || []).join(', ') || 'custom';
 }
 
+function getSerializableBoard() {
+  return {
+    tasks: state.orchestrator.tasks,
+    runs: state.orchestrator.runs,
+    events: state.orchestrator.events,
+    nextTaskNumber: state.orchestrator.nextTaskNumber,
+    nextRunNumber: state.orchestrator.nextRunNumber
+  };
+}
+
+function scheduleBoardSave() {
+  if (!state.orchestrator.boardLoaded) {
+    return;
+  }
+  window.clearTimeout(state.orchestrator.saveTimer);
+  state.orchestrator.saveTimer = window.setTimeout(() => {
+    window.cliDeck.saveOrchestratorBoard(getSerializableBoard()).catch((error) => {
+      setStatus(`Task board save failed: ${error.message}`);
+    });
+  }, 250);
+}
+
+function restoreBoard(board = {}) {
+  state.orchestrator.tasks = Array.isArray(board.tasks) ? board.tasks : [];
+  state.orchestrator.runs = Array.isArray(board.runs) ? board.runs : [];
+  state.orchestrator.events = Array.isArray(board.events) ? board.events : [];
+  state.orchestrator.nextTaskNumber = Math.max(1, Number(board.nextTaskNumber) || 1);
+  state.orchestrator.nextRunNumber = Math.max(1, Number(board.nextRunNumber) || 1);
+
+  for (const task of state.orchestrator.tasks) {
+    if (task.status === 'running') {
+      const run = task.currentRunId ? state.orchestrator.runs.find((item) => item.id === task.currentRunId) : null;
+      if (run) {
+        run.status = 'blocked';
+        run.endedAt = Date.now();
+        run.error = 'App restarted before worker reported a result.';
+      }
+      task.status = 'blocked';
+      task.blockedReason = 'App restarted before worker reported a result.';
+      task.currentRunId = null;
+      task.updatedAt = Date.now();
+      state.orchestrator.events.unshift({
+        id: crypto.randomUUID(),
+        kind: 'reclaimed',
+        taskId: task.id,
+        payload: { reason: task.blockedReason, runId: run?.id || '' },
+        createdAt: Date.now()
+      });
+    }
+  }
+
+  state.orchestrator.events = state.orchestrator.events.slice(0, 200);
+  state.orchestrator.boardLoaded = true;
+  renderOrchestrator();
+  scheduleBoardSave();
+}
+
 function addOrchestratorMessage(kind, text, meta = {}) {
   state.orchestrator.messages.unshift({
     id: crypto.randomUUID(),
@@ -595,6 +654,7 @@ function addTaskEvent(kind, taskId, payload = {}) {
   };
   state.orchestrator.events.unshift(event);
   state.orchestrator.events = state.orchestrator.events.slice(0, 200);
+  scheduleBoardSave();
   return event;
 }
 
@@ -633,6 +693,7 @@ function createTaskRun(task, session, adapter = 'pty') {
   };
   state.orchestrator.runs.unshift(run);
   state.orchestrator.runs = state.orchestrator.runs.slice(0, 200);
+  scheduleBoardSave();
   return run;
 }
 
@@ -652,6 +713,7 @@ function claimTaskForSession(task, session, adapter = 'pty') {
   task.updatedAt = Date.now();
   task.blockedReason = '';
   addTaskEvent('claimed', task.id, { runId: run.id, sessionId: session.id, adapter });
+  scheduleBoardSave();
   return run;
 }
 
@@ -672,6 +734,7 @@ function finishTaskRun(task, result, status = 'done') {
       runId: run?.id || '',
       summary: result?.summary || ''
     });
+    scheduleBoardSave();
   }
 }
 
@@ -686,6 +749,7 @@ function retryTask(task) {
   task.blockedReason = '';
   task.updatedAt = Date.now();
   addTaskEvent('retried', task.id);
+  scheduleBoardSave();
   return true;
 }
 
@@ -705,6 +769,7 @@ function blockRunningTasksForSession(sessionId, reason) {
     task.blockedReason = reason;
     task.updatedAt = Date.now();
     addTaskEvent('reclaimed', task.id, { reason, runId: run?.id || '' });
+    scheduleBoardSave();
     addOrchestratorMessage('blocked', `${task.id} blocked because worker exited: ${reason}`, {
       taskId: task.id,
       sessionId
@@ -1193,6 +1258,7 @@ function handleBrainCommand(session, command) {
     task.currentRunId = null;
     task.updatedAt = Date.now();
     addTaskEvent('cancelled', task.id);
+    scheduleBoardSave();
     addOrchestratorMessage('command', `Brain cancelled ${task.id}`);
     renderOrchestrator();
     sendStatusToBrain('cancel result');
@@ -1449,12 +1515,14 @@ function renderOrchestrator() {
           task.currentRunId = null;
           task.updatedAt = Date.now();
           addTaskEvent('cancelled', task.id);
+          scheduleBoardSave();
           renderOrchestrator();
         });
       }
       appendButton(actions, 'tiny-button danger-text', 'Archive', () => {
         state.orchestrator.tasks = state.orchestrator.tasks.filter((itemTask) => itemTask.id !== task.id);
         addTaskEvent('archived', task.id);
+        scheduleBoardSave();
         renderOrchestrator();
       });
       item.append(actions);
@@ -2227,4 +2295,11 @@ window.cliDeck.onMemoryUpdated(({ cwd, memory }) => {
 window.cliDeck.getConfig().then((config) => {
   applyConfig(config);
   setMemoryMode('history');
+  window.cliDeck
+    .getOrchestratorBoard()
+    .then((board) => restoreBoard(board))
+    .catch((error) => {
+      state.orchestrator.boardLoaded = true;
+      setStatus(`Task board load failed: ${error.message}`);
+    });
 });

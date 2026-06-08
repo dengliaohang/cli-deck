@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld('cliDeck', {
   deleteProjectMemory: (projectKey, deleteSessionFiles) =>
     ipcRenderer.invoke('memory:deleteProject', { projectKey, deleteSessionFiles }),
   cleanupRawLogs: () => ipcRenderer.invoke('memory:cleanupRawLogs'),
+  getOrchestratorBoard: () => ipcRenderer.invoke('orchestrator:getBoard'),
+  saveOrchestratorBoard: (board) => ipcRenderer.invoke('orchestrator:saveBoard', board),
   createTerminal: (config) => ipcRenderer.invoke('terminal:create', config),
   writeTerminal: (id, data) => ipcRenderer.send('terminal:input', { id, data }),
   resizeTerminal: (id, cols, rows) => ipcRenderer.send('terminal:resize', { id, cols, rows }),

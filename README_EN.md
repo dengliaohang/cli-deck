@@ -139,6 +139,8 @@ The Brain session is only a planner and status recipient. It is excluded from th
 
 Task states include `ready`, `running`, `blocked`, `done`, and `cancelled`. Each dispatch creates a run with attempts, assignee, run id, and event history. If a worker exits before returning a result, CLI Deck marks the running task as `blocked` so it can be retried explicitly.
 
+The Task Board is persisted under Electron `userData` as `orchestrator-board.json`. After app restart, tasks/runs/events are restored; previously `running` tasks are reclaimed as `blocked` so work does not disappear silently.
+
 For coding, build, test, or review objectives, Dispatch first creates a worker task directly in CLI Deck and assigns it by capability; worker results are then reported back to the Brain for follow-up scheduling. Plain chat objectives are sent to the Brain directly.
 
 Example dispatch command:
