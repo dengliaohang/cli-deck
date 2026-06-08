@@ -114,9 +114,10 @@ MVP 能力：
 - 用户输入 swarm objective 后，先发送给选中的 Brain session 生成计划。
 - 如果没有任何 live CLI session，Dispatch 会弹出创建 Brain 的对话框，让用户选择 CLI 类型、工作目录和 Memory 选项；Brain 启动成功后继续处理刚才的 objective。
 - Brain 窗口先接收用户原始输入并正常回答；只有输出 `CLI_DECK_PLAN_ACTUAL_START` / `CLI_DECK_PLAN_ACTUAL_END` 协议块后，CLI Deck 才创建 worker tasks。
-- 未选择 Brain 时，CLI Deck 退化为直接创建一个 implement task。
+- 未选择 Brain 时，CLI Deck 会保留当前 objective 并弹出创建 Brain 对话框，避免把用户原始对话误派成 worker 任务。
 - Auto dispatch 开启时，自动选择可用 worker 并写入任务 prompt。
-- 派发 prompt 使用 bracketed paste 包裹并发送 Enter，适配 Codex / Claude 这类 TUI 的多行输入提交。
+- 发给 Brain 的 objective 使用普通终端输入并发送 Enter，等价于用户在该 CLI 窗口里直接提问。
+- 发给 worker 的多行任务 prompt 使用 bracketed paste 包裹，再单独发送 Enter，适配 Codex / Claude 这类 TUI 的多行输入提交。
 - worker 完成后可输出 `CLI_DECK_RESULT_ACTUAL_START` / `CLI_DECK_RESULT_ACTUAL_END` 协议块触发后续调度。
 - CLI Deck 解析结果后更新任务状态，并按结果自动排队下一步：
 - `done` / `needs_review` -> review

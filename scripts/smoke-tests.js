@@ -234,8 +234,12 @@ function parsePlanBlock(block) {
   return tasks;
 }
 
-function wrapSubmittedPrompt(prompt) {
-  return `\x1b[200~${prompt}\x1b[201~\r`;
+function buildTypedPromptWrites(prompt) {
+  return [String(prompt || ''), '\r'];
+}
+
+function buildPastedPromptWrites(prompt) {
+  return [`\x1b[200~${prompt}\x1b[201~`, '\r'];
 }
 
 function chooseNextCapability(result, completedTask = null) {
@@ -311,8 +315,8 @@ CLI_DECK_PLAN_ACTUAL_END
     { capability: 'review', title: 'review the diff' }
   ]
 );
-assert.equal(wrapSubmittedPrompt('hello').startsWith('\x1b[200~'), true);
-assert.equal(wrapSubmittedPrompt('hello').endsWith('\x1b[201~\r'), true);
+assert.deepEqual(buildTypedPromptWrites('hello'), ['hello', '\r']);
+assert.deepEqual(buildPastedPromptWrites('hello'), ['\x1b[200~hello\x1b[201~', '\r']);
 assert.equal(chooseNextCapability({ status: 'done' }, { capability: 'implement' }), 'review');
 assert.equal(chooseNextCapability({ status: 'done' }, { capability: 'review' }), 'test');
 assert.equal(chooseNextCapability({ status: 'blocked' }), 'research');

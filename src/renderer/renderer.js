@@ -594,9 +594,14 @@ function createSwarmTask(title, capability = 'implement', sourceTaskId = null) {
   };
 }
 
-function writeSubmittedPrompt(sessionId, prompt) {
-  const wrapped = `\x1b[200~${prompt}\x1b[201~\r`;
-  window.cliDeck.writeTerminal(sessionId, wrapped);
+function submitTypedPrompt(sessionId, prompt) {
+  window.cliDeck.writeTerminal(sessionId, String(prompt || ''));
+  window.setTimeout(() => window.cliDeck.writeTerminal(sessionId, '\r'), 30);
+}
+
+function pasteAndSubmitPrompt(sessionId, prompt) {
+  window.cliDeck.writeTerminal(sessionId, `\x1b[200~${prompt}\x1b[201~`);
+  window.setTimeout(() => window.cliDeck.writeTerminal(sessionId, '\r'), 50);
 }
 
 function buildWorkerPrompt(task, session) {
@@ -640,7 +645,7 @@ function dispatchTask(taskId) {
 
   task.status = 'running';
   task.assignedSessionId = session.id;
-  writeSubmittedPrompt(session.id, buildWorkerPrompt(task, session));
+  pasteAndSubmitPrompt(session.id, buildWorkerPrompt(task, session));
   addOrchestratorMessage('dispatch', `${task.id} -> ${session.title}`, { taskId: task.id, sessionId: session.id });
   renderOrchestrator();
 }
@@ -839,15 +844,15 @@ function submitSwarmObjective(value) {
 
   const brain = state.sessions.get(state.orchestrator.brainSessionId);
   if (brain && !brain.exited) {
-    writeSubmittedPrompt(brain.id, objective);
-    addOrchestratorMessage('brain', `Sent objective to brain: ${brain.title}`);
+    submitTypedPrompt(brain.id, objective);
+    setActiveSession(brain.id);
+    addOrchestratorMessage('brain', `Sent objective to brain terminal: ${brain.title}`);
     return;
   }
 
-  const task = createSwarmTask(objective, 'implement');
-  state.orchestrator.tasks.unshift(task);
-  addOrchestratorMessage('objective', `No brain selected. Queued fallback objective: ${objective}`, { taskId: task.id });
-  dispatchQueuedTasks();
+  state.orchestrator.pendingBrainObjective = objective;
+  openBrainDialog();
+  addOrchestratorMessage('brain', 'No brain selected. Create a swarm brain to receive this objective.');
 }
 
 function renderBrainPresetOptions() {
@@ -908,7 +913,7 @@ async function createBrainFromDialog() {
   const objective = state.orchestrator.pendingBrainObjective;
   state.orchestrator.pendingBrainObjective = '';
   if (objective) {
-    window.setTimeout(() => submitSwarmObjective(objective), 350);
+    window.setTimeout(() => submitSwarmObjective(objective), 1200);
   }
 }
 
