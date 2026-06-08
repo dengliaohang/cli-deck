@@ -298,6 +298,33 @@ function stripAnsi(value) {
     .replace(/\r/g, '\n');
 }
 
+function normalizeRecordedInput(value) {
+  return stripAnsi(value)
+    .replace(/\x1b\[[0-?]*[ -/]*[@-~]/gi, '')
+    .replace(/\x1b/g, '')
+    .replace(/\[[0-?]*[hl]/gi, '')
+    .replace(/\r?\n/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isMemoryCommandCandidate(value) {
+  const command = normalizeRecordedInput(value);
+  if (!command || command.length > 240) {
+    return false;
+  }
+
+  const lower = command.toLowerCase();
+  return !(
+    lower.includes('you are the selected cli deck swarm brain') ||
+    lower.includes('cli deck swarm task') ||
+    lower.includes('cli_deck_command_actual') ||
+    lower.includes('cli_deck_plan_actual') ||
+    lower.includes('cli_deck_result_actual') ||
+    lower.startsWith('objective:')
+  );
+}
+
 function toCommandLine(command, args) {
   return [command, ...(Array.isArray(args) ? args : [])].filter(Boolean).join(' ');
 }
@@ -506,8 +533,8 @@ function recordInput(recorder, data) {
   for (const char of String(data || '')) {
     if (char === '\r' || char === '\n') {
       const command = recorder.inputBuffer.trim();
-      if (command) {
-        recorder.userCommands.unshift(command);
+      if (isMemoryCommandCandidate(command)) {
+        recorder.userCommands.unshift(normalizeRecordedInput(command));
         recorder.userCommands = [...new Set(recorder.userCommands)].slice(0, 20);
       }
       recorder.inputBuffer = '';
@@ -873,10 +900,10 @@ function deleteProjectMemory(projectKey, options = {}) {
 }
 
 function incrementFrequentCommand(commands, commandLine) {
-  const value = String(commandLine || '').trim();
-  if (!value) {
+  if (!isMemoryCommandCandidate(commandLine)) {
     return commands;
   }
+  const value = normalizeRecordedInput(commandLine);
 
   const next = [...commands];
   const existing = next.find((item) => item.command === value);
@@ -901,7 +928,9 @@ function updateProjectMemory(summary) {
     [summary.tool]: Number(memory.toolUsage?.[summary.tool] || 0) + 1
   };
 
-  let frequentCommands = Array.isArray(memory.frequentCommands) ? memory.frequentCommands : [];
+  let frequentCommands = Array.isArray(memory.frequentCommands)
+    ? memory.frequentCommands.filter((item) => isMemoryCommandCandidate(item.command))
+    : [];
   frequentCommands = incrementFrequentCommand(frequentCommands, summary.commandLine);
   for (const command of summary.userCommands || []) {
     frequentCommands = incrementFrequentCommand(frequentCommands, command);

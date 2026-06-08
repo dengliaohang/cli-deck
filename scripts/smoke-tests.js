@@ -86,6 +86,35 @@ function isTextPasteShortcut(event) {
   return event.ctrlKey && !event.altKey;
 }
 
+function normalizeRecordedInput(value) {
+  return String(value || '')
+    .replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1B\\))/g, '')
+    .replace(/\r/g, '\n')
+    .replace(/\x1b\[[0-?]*[ -/]*[@-~]/gi, '')
+    .replace(/\x1b/g, '')
+    .replace(/\[[0-?]*[hl]/gi, '')
+    .replace(/\r?\n/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isMemoryCommandCandidate(value) {
+  const command = normalizeRecordedInput(value);
+  if (!command || command.length > 240) {
+    return false;
+  }
+
+  const lower = command.toLowerCase();
+  return !(
+    lower.includes('you are the selected cli deck swarm brain') ||
+    lower.includes('cli deck swarm task') ||
+    lower.includes('cli_deck_command_actual') ||
+    lower.includes('cli_deck_plan_actual') ||
+    lower.includes('cli_deck_result_actual') ||
+    lower.startsWith('objective:')
+  );
+}
+
 function classifyCommand(command) {
   const value = String(command || '').toLowerCase();
   if (value.includes('opencode')) {
@@ -304,7 +333,7 @@ function consumeOrchestratorBlocks(buffer) {
 }
 
 function buildTypedPromptWrites(prompt) {
-  return [String(prompt || ''), '\n'];
+  return [String(prompt || ''), '\r', '\n'];
 }
 
 function buildPastedPromptWrites(prompt) {
@@ -423,9 +452,12 @@ CLI_DECK_RESULT_ACTUAL_END
 `).map((event) => event.type),
   ['command', 'result']
 );
-assert.deepEqual(buildTypedPromptWrites('hello'), ['hello', '\n']);
+assert.deepEqual(buildTypedPromptWrites('hello'), ['hello', '\r', '\n']);
 assert.deepEqual(buildPastedPromptWrites('hello'), ['\x1b[200~hello\x1b[201~', '\r']);
 assert.equal(compactPromptText('hello\n\n world  '), 'hello world');
+assert.equal(isMemoryCommandCandidate('npm test'), true);
+assert.equal(isMemoryCommandCandidate('[IObjective: hello You are the selected CLI Deck swarm brain.'), false);
+assert.equal(isMemoryCommandCandidate('CLI_DECK_COMMAND_ACTUAL_START action: status CLI_DECK_COMMAND_ACTUAL_END'), false);
 assert.equal(chooseNextCapability({ status: 'done' }, { capability: 'implement' }), 'review');
 assert.equal(chooseNextCapability({ status: 'done' }, { capability: 'review' }), 'test');
 assert.equal(chooseNextCapability({ status: 'blocked' }), 'research');

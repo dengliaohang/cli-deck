@@ -596,7 +596,8 @@ function createSwarmTask(title, capability = 'implement', sourceTaskId = null) {
 
 function submitTypedPrompt(sessionId, prompt) {
   window.cliDeck.writeTerminal(sessionId, String(prompt || ''));
-  window.setTimeout(() => window.cliDeck.writeTerminal(sessionId, '\n'), 80);
+  window.setTimeout(() => window.cliDeck.writeTerminal(sessionId, '\r'), 80);
+  window.setTimeout(() => window.cliDeck.writeTerminal(sessionId, '\n'), 220);
 }
 
 function pasteAndSubmitPrompt(sessionId, prompt) {
