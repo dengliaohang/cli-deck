@@ -1,0 +1,61 @@
+{
+  "name": "cli-deck",
+  "version": "0.1.0",
+  "description": "A Windows desktop host for Codex, Claude Code, OpenCode and other CLI tools.",
+  "main": "src/main.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "electron .",
+    "test": "node scripts/smoke-tests.js",
+    "build:dir": "electron-builder --win dir",
+    "build": "electron-builder --win nsis portable",
+    "build:portable": "electron-builder --win portable"
+  },
+  "keywords": [
+    "terminal",
+    "cli",
+    "electron",
+    "codex",
+    "claude",
+    "opencode"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
+    "@lydell/node-pty": "^1.2.0-beta.12",
+    "electron-store": "^8.2.0"
+  },
+  "devDependencies": {
+    "electron": "^31.7.7",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "local.cli-deck",
+    "productName": "CLI Deck",
+    "directories": {
+      "output": "dist"
+    },
+    "electronDist": "node_modules/electron/dist",
+    "electronVersion": "31.7.7",
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/@lydell/node-pty*/**/*"
+    ],
+    "win": {
+      "signAndEditExecutable": false,
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}

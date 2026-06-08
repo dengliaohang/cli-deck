@@ -1,0 +1,17 @@
+node_modules/
+dist/
+out/
+.electron-cache/
+.electron-builder-cache/
+.home/
+.localappdata/
+.npm-cache/
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+*.tmp
+*.temp
+*.log
+*.tsbuildinfo

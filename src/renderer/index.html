@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CLI Deck</title>
+    <link rel="stylesheet" href="../../node_modules/@xterm/xterm/css/xterm.css" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">CD</div>
+          <div>
+            <h1>CLI Deck</h1>
+            <p>AI CLI workspace</p>
+          </div>
+        </div>
+
+        <div class="sidebar-actions">
+          <button class="primary-button" id="new-session-button" type="button">New Session</button>
+          <button class="ghost-button" id="settings-button" type="button">Settings</button>
+        </div>
+
+        <section class="panel">
+          <h2>Sessions</h2>
+          <div class="session-list" id="session-list"></div>
+        </section>
+
+        <section class="panel">
+          <h2>Presets</h2>
+          <div class="preset-list" id="preset-list"></div>
+        </section>
+
+        <section class="panel memory-panel">
+          <div class="panel-title-row">
+            <h2>Memory</h2>
+            <div class="memory-tabs" role="tablist" aria-label="Memory view">
+              <button class="memory-tab active" id="memory-current-button" type="button">Current</button>
+              <button class="memory-tab" id="memory-history-button" type="button">History</button>
+            </div>
+          </div>
+          <div class="memory-card" id="memory-card">
+            <p class="memory-empty">Start or select a session to view project memory.</p>
+          </div>
+        </section>
+      </aside>
+
+      <main class="workspace">
+        <div class="topbar">
+          <div>
+            <p class="eyebrow">Tiled terminal workspace</p>
+            <h2 id="workspace-title">No sessions</h2>
+          </div>
+          <div class="toolbar">
+            <button class="ghost-button" id="duplicate-button" type="button" disabled>Duplicate</button>
+            <button class="ghost-button" id="open-cwd-button" type="button" disabled>Open CWD</button>
+            <button class="ghost-button" id="close-stopped-button" type="button" disabled>Close Stopped</button>
+            <button class="ghost-button" id="restart-button" type="button" disabled>Restart</button>
+            <button class="danger-button" id="close-button" type="button" disabled>Close</button>
+          </div>
+        </div>
+
+        <div class="terminal-stack" id="terminal-stack">
+          <div class="empty-state" id="empty-state">
+            <h2>Start a CLI session</h2>
+            <p>Choose Codex, OpenCode, Claude Code, or enter a custom command.</p>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <dialog class="session-dialog" id="session-dialog">
+      <form method="dialog" id="session-form">
+        <div class="dialog-header">
+          <h2>New Session</h2>
+          <button class="icon-button" id="dialog-close-button" type="button" aria-label="Close">×</button>
+        </div>
+
+        <label>
+          <span>Name</span>
+          <input id="session-name" name="name" autocomplete="off" placeholder="Codex" />
+        </label>
+
+        <label>
+          <span>Command</span>
+          <input id="session-command" name="command" required autocomplete="off" list="command-options" placeholder="codex" />
+          <datalist id="command-options">
+            <option value="codex"></option>
+            <option value="claude"></option>
+            <option value="opencode"></option>
+          </datalist>
+        </label>
+
+        <label>
+          <span>Arguments</span>
+          <input id="session-args" name="args" autocomplete="off" placeholder="--model gpt-5" />
+        </label>
+
+        <label>
+          <span>Working directory</span>
+          <div class="path-picker">
+            <input id="session-cwd" name="cwd" autocomplete="off" />
+            <button class="ghost-button browse-button" id="browse-cwd-button" type="button">Browse</button>
+          </div>
+        </label>
+
+        <div class="dialog-actions">
+          <button class="ghost-button" id="cancel-button" type="button">Cancel</button>
+          <button class="primary-button" id="start-button" value="default" type="submit">Start</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="session-dialog" id="settings-dialog">
+      <form method="dialog" id="settings-form">
+        <div class="dialog-header">
+          <h2>Settings</h2>
+          <button class="icon-button" id="settings-close-button" type="button" aria-label="Close">×</button>
+        </div>
+
+        <label>
+          <span>Default working directory</span>
+          <div class="path-picker">
+            <input id="settings-default-cwd" name="defaultCwd" autocomplete="off" />
+            <button class="ghost-button browse-button" id="settings-browse-cwd-button" type="button">Browse</button>
+          </div>
+        </label>
+
+        <label>
+          <span>Presets</span>
+          <textarea id="settings-presets" name="presets" spellcheck="false"></textarea>
+        </label>
+
+        <div class="settings-grid">
+          <label class="checkbox-label">
+            <input id="settings-raw-logs" name="rawLogsEnabled" type="checkbox" />
+            <span>Record raw logs</span>
+          </label>
+          <label>
+            <span>Max log MB</span>
+            <input id="settings-max-log-mb" name="maxLogMb" min="1" type="number" />
+          </label>
+          <label>
+            <span>Raw log retention days</span>
+            <input id="settings-retention-days" name="retentionDays" min="1" type="number" />
+          </label>
+          <label>
+            <span>Failed log retention days</span>
+            <input id="settings-failed-retention-days" name="failedRetentionDays" min="1" type="number" />
+          </label>
+        </div>
+
+        <div class="dialog-actions">
+          <button class="ghost-button" id="settings-cancel-button" type="button">Cancel</button>
+          <button class="primary-button" id="settings-save-button" value="default" type="submit">Save</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="../../node_modules/@xterm/xterm/lib/xterm.js"></script>
+    <script src="../../node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
+    <script src="./renderer.js"></script>
+  </body>
+</html>
