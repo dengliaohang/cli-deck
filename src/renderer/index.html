@@ -139,6 +139,48 @@
       </form>
     </dialog>
 
+    <dialog class="session-dialog" id="brain-dialog">
+      <form method="dialog" id="brain-form">
+        <div class="dialog-header">
+          <h2>Create Swarm Brain</h2>
+          <button class="icon-button" id="brain-close-button" type="button" aria-label="Close">×</button>
+        </div>
+
+        <label>
+          <span>Brain CLI</span>
+          <select id="brain-preset"></select>
+        </label>
+
+        <label>
+          <span>Command</span>
+          <input id="brain-command" name="command" required autocomplete="off" placeholder="codex" />
+        </label>
+
+        <label>
+          <span>Arguments</span>
+          <input id="brain-args" name="args" autocomplete="off" placeholder="--model gpt-5" />
+        </label>
+
+        <label>
+          <span>Working directory</span>
+          <div class="path-picker">
+            <input id="brain-cwd" name="cwd" autocomplete="off" />
+            <button class="ghost-button browse-button" id="brain-browse-cwd-button" type="button">Browse</button>
+          </div>
+        </label>
+
+        <label class="checkbox-label">
+          <input id="brain-memory-enabled" name="memoryEnabled" type="checkbox" checked />
+          <span>Record brain session in Memory</span>
+        </label>
+
+        <div class="dialog-actions">
+          <button class="ghost-button" id="brain-cancel-button" type="button">Cancel</button>
+          <button class="primary-button" id="brain-start-button" value="default" type="submit">Start brain</button>
+        </div>
+      </form>
+    </dialog>
+
     <dialog class="session-dialog" id="settings-dialog">
       <form method="dialog" id="settings-form">
         <div class="dialog-header">

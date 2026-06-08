@@ -26,7 +26,8 @@ const state = {
     messages: [],
     autoDispatch: true,
     nextTaskNumber: 1,
-    brainSessionId: ''
+    brainSessionId: '',
+    pendingBrainObjective: ''
   }
 };
 
@@ -62,6 +63,16 @@ const elements = {
   orchestratorGoalInput: document.querySelector('#orchestrator-goal'),
   orchestratorQueue: document.querySelector('#orchestrator-queue'),
   orchestratorLog: document.querySelector('#orchestrator-log'),
+  brainDialog: document.querySelector('#brain-dialog'),
+  brainForm: document.querySelector('#brain-form'),
+  brainCloseButton: document.querySelector('#brain-close-button'),
+  brainCancelButton: document.querySelector('#brain-cancel-button'),
+  brainPresetInput: document.querySelector('#brain-preset'),
+  brainCommandInput: document.querySelector('#brain-command'),
+  brainArgsInput: document.querySelector('#brain-args'),
+  brainCwdInput: document.querySelector('#brain-cwd'),
+  brainBrowseCwdButton: document.querySelector('#brain-browse-cwd-button'),
+  brainMemoryEnabledInput: document.querySelector('#brain-memory-enabled'),
   settingsDialog: document.querySelector('#settings-dialog'),
   settingsForm: document.querySelector('#settings-form'),
   settingsCloseButton: document.querySelector('#settings-close-button'),
@@ -837,6 +848,14 @@ function submitSwarmObjective(value) {
   }
   elements.orchestratorGoalInput.value = '';
 
+  const liveSessions = Array.from(state.sessions.values()).filter((session) => !session.exited);
+  if (liveSessions.length === 0) {
+    state.orchestrator.pendingBrainObjective = objective;
+    openBrainDialog();
+    addOrchestratorMessage('brain', 'No CLI sessions. Create a swarm brain first.');
+    return;
+  }
+
   const brain = state.sessions.get(state.orchestrator.brainSessionId);
   if (brain && !brain.exited) {
     writeSubmittedPrompt(brain.id, buildBrainPrompt(objective));
@@ -848,6 +867,68 @@ function submitSwarmObjective(value) {
   state.orchestrator.tasks.unshift(task);
   addOrchestratorMessage('objective', `No brain selected. Queued fallback objective: ${objective}`, { taskId: task.id });
   dispatchQueuedTasks();
+}
+
+function renderBrainPresetOptions() {
+  elements.brainPresetInput.replaceChildren();
+  for (const preset of state.presets) {
+    const option = document.createElement('option');
+    option.value = preset.name || preset.command;
+    option.textContent = preset.name || preset.command;
+    elements.brainPresetInput.append(option);
+  }
+  const custom = document.createElement('option');
+  custom.value = '__custom__';
+  custom.textContent = 'Custom';
+  elements.brainPresetInput.append(custom);
+}
+
+function applyBrainPreset() {
+  const preset = state.presets.find((item) => (item.name || item.command) === elements.brainPresetInput.value);
+  if (!preset) {
+    return;
+  }
+  elements.brainCommandInput.value = preset.command || '';
+  elements.brainArgsInput.value = (preset.args || []).join(' ');
+}
+
+function openBrainDialog() {
+  renderBrainPresetOptions();
+  const first = state.presets[0] || { command: 'codex', args: [] };
+  elements.brainPresetInput.value = first.name || first.command || '__custom__';
+  elements.brainCommandInput.value = first.command || 'codex';
+  elements.brainArgsInput.value = (first.args || []).join(' ');
+  elements.brainCwdInput.value = state.defaultCwd;
+  elements.brainMemoryEnabledInput.checked = true;
+  elements.brainDialog.showModal();
+  window.setTimeout(() => elements.brainCommandInput.focus(), 0);
+}
+
+async function createBrainFromDialog() {
+  const command = elements.brainCommandInput.value.trim();
+  if (!command) {
+    return;
+  }
+  elements.brainDialog.close();
+  const session = await startSession({
+    name: `Brain ${command}`,
+    command,
+    args: splitArgs(elements.brainArgsInput.value),
+    cwd: elements.brainCwdInput.value.trim() || state.defaultCwd,
+    memoryEnabled: elements.brainMemoryEnabledInput.checked
+  });
+  if (!session) {
+    return;
+  }
+  state.orchestrator.brainSessionId = session.id;
+  renderOrchestrator();
+  addOrchestratorMessage('brain', `Brain created: ${session.title}`);
+
+  const objective = state.orchestrator.pendingBrainObjective;
+  state.orchestrator.pendingBrainObjective = '';
+  if (objective) {
+    window.setTimeout(() => submitSwarmObjective(objective), 350);
+  }
 }
 
 function renderBrainSelect(workers) {
@@ -1339,6 +1420,7 @@ async function startSession(config) {
   setMemoryMode('current');
   renderOrchestrator();
   syncLayout();
+  return session;
 }
 
 function openDialog(config = {}) {
@@ -1510,6 +1592,8 @@ elements.memoryCurrentButton.addEventListener('click', () => setMemoryMode('curr
 elements.memoryHistoryButton.addEventListener('click', () => setMemoryMode('history'));
 elements.dialogCloseButton.addEventListener('click', () => elements.dialog.close());
 elements.cancelButton.addEventListener('click', () => elements.dialog.close());
+elements.brainCloseButton.addEventListener('click', () => elements.brainDialog.close());
+elements.brainCancelButton.addEventListener('click', () => elements.brainDialog.close());
 elements.settingsCloseButton.addEventListener('click', () => elements.settingsDialog.close());
 elements.settingsCancelButton.addEventListener('click', () => elements.settingsDialog.close());
 elements.orchestratorAutoDispatchInput.addEventListener('change', () => {
@@ -1526,6 +1610,13 @@ elements.browseCwdButton.addEventListener('click', async () => {
   const selectedPath = await window.cliDeck.selectDirectory();
   if (selectedPath) {
     elements.cwdInput.value = selectedPath;
+  }
+});
+elements.brainPresetInput.addEventListener('change', applyBrainPreset);
+elements.brainBrowseCwdButton.addEventListener('click', async () => {
+  const selectedPath = await window.cliDeck.selectDirectory();
+  if (selectedPath) {
+    elements.brainCwdInput.value = selectedPath;
   }
 });
 elements.settingsBrowseCwdButton.addEventListener('click', async () => {
@@ -1562,6 +1653,13 @@ elements.settingsForm.addEventListener('submit', (event) => {
 elements.orchestratorForm.addEventListener('submit', (event) => {
   event.preventDefault();
   submitSwarmObjective(elements.orchestratorGoalInput.value);
+});
+
+elements.brainForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  createBrainFromDialog().catch((error) => {
+    setStatus(`Brain start failed: ${error.message}`);
+  });
 });
 
 window.addEventListener('resize', () => {

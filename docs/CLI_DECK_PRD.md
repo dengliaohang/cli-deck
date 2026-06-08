@@ -112,6 +112,7 @@ MVP 能力：
   - OpenCode: implement / test
 - Custom: custom
 - 用户输入 swarm objective 后，先发送给选中的 Brain session 生成计划。
+- 如果没有任何 live CLI session，Dispatch 会弹出创建 Brain 的对话框，让用户选择 CLI 类型、工作目录和 Memory 选项；Brain 启动成功后继续处理刚才的 objective。
 - Brain 输出 `CLI_DECK_PLAN_START` / `CLI_DECK_PLAN_END` 协议块后，CLI Deck 创建 worker tasks。
 - 未选择 Brain 时，CLI Deck 退化为直接创建一个 implement task。
 - Auto dispatch 开启时，自动选择可用 worker 并写入任务 prompt。
