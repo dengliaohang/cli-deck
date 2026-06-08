@@ -982,7 +982,8 @@ function spawnSession(config) {
   const cwd = normalizeCwd(config.cwd || os.homedir());
   const title = buildSessionTitle(config, cwd);
   const launch = getPtyLaunch(config.command, args);
-  const recorder = createSessionRecorder({ id, title, command: config.command, args, cwd });
+  const memoryEnabled = config.memoryEnabled !== false;
+  const recorder = memoryEnabled ? createSessionRecorder({ id, title, command: config.command, args, cwd }) : null;
 
   let proc;
   try {
@@ -998,8 +999,10 @@ function spawnSession(config) {
       }
     });
   } catch (error) {
-    writeRecorderLog(recorder, `\n\n[start failed]\n${error.message}\n`, { force: true });
-    recorder.writeStream.end();
+    if (recorder) {
+      writeRecorderLog(recorder, `\n\n[start failed]\n${error.message}\n`, { force: true });
+      recorder.writeStream.end();
+    }
     throw error;
   }
 
@@ -1027,7 +1030,7 @@ function spawnSession(config) {
     sendToRenderer('terminal:exit', { id, exitCode, signal });
   });
 
-  return { id, title, command: config.command, args, cwd };
+  return { id, title, command: config.command, args, cwd, memoryEnabled };
 }
 
 app.whenReady().then(() => {

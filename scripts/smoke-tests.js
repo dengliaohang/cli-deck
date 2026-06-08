@@ -70,6 +70,10 @@ function buildSessionTitle(config) {
   return `${baseTitle} — ${summarizeCwd(config.cwd)}`;
 }
 
+function isSessionMemoryEnabled(config) {
+  return config.memoryEnabled !== false;
+}
+
 function classifyFailureCategory(hints) {
   const text = (Array.isArray(hints) ? hints : []).join('\n').toLowerCase();
   if (!text) {
@@ -157,6 +161,9 @@ assert.equal(
   buildSessionTitle({ name: 'Codex — workspace/tools', cwd: 'C:/development/workspace/tools' }),
   'Codex — workspace/tools'
 );
+assert.equal(isSessionMemoryEnabled({}), true);
+assert.equal(isSessionMemoryEnabled({ memoryEnabled: true }), true);
+assert.equal(isSessionMemoryEnabled({ memoryEnabled: false }), false);
 
 assert.equal(classifyFailureCategory(['npm ERR! command not found']), 'command');
 assert.equal(classifyFailureCategory(['Traceback most recent call last']), 'exception');

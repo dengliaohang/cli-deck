@@ -240,7 +240,8 @@ button:disabled {
 .history-title,
 .history-subtitle,
 .history-cwd,
-.history-summary {
+.history-summary,
+.session-memory {
   margin: 0;
 }
 
@@ -569,6 +570,30 @@ textarea {
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.session-memory,
+.tile-memory {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 5px;
+  border: 1px solid rgba(215, 186, 125, 0.32);
+  border-radius: 999px;
+  padding: 2px 6px;
+  background: rgba(215, 186, 125, 0.1);
+  color: #f4d99b;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.tile-memory {
+  margin-top: 0;
+}
+
+.session-memory[hidden],
+.tile-memory[hidden] {
+  display: none;
 }
 
 .status-dot {

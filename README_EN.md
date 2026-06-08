@@ -9,6 +9,7 @@ CLI Deck is an Electron desktop workspace for running and managing multiple AI C
 - Starts real PTY terminal sessions inside the app instead of capturing external terminal windows.
 - Automatically tiles multiple sessions, which is useful when running several Codex / Claude / OpenCode tasks in parallel.
 - Supports custom command, arguments, and working directory.
+- Lets you decide whether each new session is recorded in Memory, which is useful for temporary or sensitive sessions.
 - Session titles automatically include the tail of the current path, for example `Codex — workspace/tools`; long paths keep only the last two segments.
 - Session actions: restart, duplicate, rename, copy command, open cwd, and close stopped.
 - Local memory layer:
@@ -157,6 +158,11 @@ macOS directory build:
 ```bash
 npm run build:mac
 ```
+
+## Project Docs
+
+- [Feature PRD and architecture design](docs/CLI_DECK_PRD.md)
+- [Memory Layer PRD](docs/CLI_DECK_MEMORY_PRD.md)
 
 ## Repository Contents
 

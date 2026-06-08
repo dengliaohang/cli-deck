@@ -44,6 +44,7 @@ const elements = {
   commandInput: document.querySelector('#session-command'),
   argsInput: document.querySelector('#session-args'),
   cwdInput: document.querySelector('#session-cwd'),
+  memoryEnabledInput: document.querySelector('#session-memory-enabled'),
   browseCwdButton: document.querySelector('#browse-cwd-button'),
   memoryCurrentButton: document.querySelector('#memory-current-button'),
   memoryHistoryButton: document.querySelector('#memory-history-button'),
@@ -708,6 +709,9 @@ function renderPresets() {
 function updateSessionListItem(session) {
   session.listItem.querySelector('.session-name').textContent = session.title;
   session.listItem.querySelector('.session-command').textContent = commandLineFromConfig(session);
+  const memoryLabel = session.listItem.querySelector('.session-memory');
+  memoryLabel.textContent = session.memoryEnabled === false ? 'Memory off' : '';
+  memoryLabel.hidden = session.memoryEnabled !== false;
 }
 
 function createSessionListItem(session) {
@@ -718,6 +722,7 @@ function createSessionListItem(session) {
     <span>
       <span class="session-name"></span>
       <span class="session-command"></span>
+      <span class="session-memory"></span>
     </span>
     <span class="status-dot" aria-hidden="true"></span>
   `;
@@ -739,6 +744,7 @@ function createTile(session) {
     <header class="tile-header">
       <span class="tile-title"></span>
       <span class="tile-header-actions">
+        <span class="tile-memory"></span>
         <button class="tile-button tile-rename" type="button">Rename</button>
         <button class="tile-button tile-copy" type="button">Copy</button>
         <span class="tile-kind">RUNNING</span>
@@ -747,6 +753,9 @@ function createTile(session) {
     <div class="tile-body"></div>
   `;
   tile.querySelector('.tile-title').textContent = session.title;
+  const memoryBadge = tile.querySelector('.tile-memory');
+  memoryBadge.textContent = session.memoryEnabled === false ? 'MEMORY OFF' : '';
+  memoryBadge.hidden = session.memoryEnabled !== false;
   tile.querySelector('.tile-rename').addEventListener('click', (event) => {
     event.stopPropagation();
     renameSession(tile.dataset.sessionId);
@@ -792,6 +801,7 @@ async function startSession(config) {
     title: buildSessionTitle(launchConfig),
     command: launchConfig.command,
     args: launchConfig.args || [],
+    memoryEnabled: launchConfig.memoryEnabled !== false,
     term,
     fit
   };
@@ -846,6 +856,7 @@ function openDialog(config = {}) {
   elements.commandInput.value = config.command || '';
   elements.argsInput.value = (config.args || []).join(' ');
   elements.cwdInput.value = config.cwd || state.defaultCwd;
+  elements.memoryEnabledInput.checked = config.memoryEnabled !== false;
   elements.dialog.showModal();
   window.setTimeout(() => elements.commandInput.focus(), 0);
 }
@@ -1044,7 +1055,8 @@ elements.form.addEventListener('submit', (event) => {
     name: elements.nameInput.value.trim() || command,
     command,
     args: splitArgs(elements.argsInput.value),
-    cwd: elements.cwdInput.value.trim() || state.defaultCwd
+    cwd: elements.cwdInput.value.trim() || state.defaultCwd,
+    memoryEnabled: elements.memoryEnabledInput.checked
   });
 });
 
