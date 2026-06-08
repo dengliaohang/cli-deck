@@ -113,16 +113,19 @@ MVP 能力：
 - Custom: custom
 - 用户输入 swarm objective 后，先发送给选中的 Brain session 生成计划。
 - 如果没有任何 live CLI session，Dispatch 会弹出创建 Brain 的对话框，让用户选择 CLI 类型、工作目录和 Memory 选项；Brain 启动成功后继续处理刚才的 objective。
-- Brain 窗口先接收用户原始输入并正常回答；只有输出 `CLI_DECK_PLAN_ACTUAL_START` / `CLI_DECK_PLAN_ACTUAL_END` 协议块后，CLI Deck 才创建 worker tasks。
+- Brain 窗口接收带调度说明的 objective prompt 并正常回答；当输出 `CLI_DECK_COMMAND_ACTUAL_START` / `CLI_DECK_COMMAND_ACTUAL_END` 或 `CLI_DECK_PLAN_ACTUAL_START` / `CLI_DECK_PLAN_ACTUAL_END` 协议块后，CLI Deck 才执行调度动作。
 - 未选择 Brain 时，CLI Deck 会保留当前 objective 并弹出创建 Brain 对话框，避免把用户原始对话误派成 worker 任务。
 - Auto dispatch 开启时，自动选择可用 worker 并写入任务 prompt。
-- 发给 Brain 的 objective 使用普通终端输入并发送 Enter，等价于用户在该 CLI 窗口里直接提问。
+- 发给 Brain 的 objective 使用 bracketed paste 写入带调度协议说明的多行 prompt，再单独发送 Enter。
 - 发给 worker 的多行任务 prompt 使用 bracketed paste 包裹，再单独发送 Enter，适配 Codex / Claude 这类 TUI 的多行输入提交。
-- worker 完成后可输出 `CLI_DECK_RESULT_ACTUAL_START` / `CLI_DECK_RESULT_ACTUAL_END` 协议块触发后续调度。
-- CLI Deck 解析结果后更新任务状态，并按结果自动排队下一步：
-- `done` / `needs_review` -> review
-- `needs_test` -> test
-- `blocked` -> research
+- Brain command 支持 `dispatch` / `status` / `cancel` / `retry` / `message`。
+- `dispatch` command 可通过 `target` 指定 session id、session title、能力名或 `brain`；未指定时按 capability 自动选择 worker。
+- worker 完成后可输出 `CLI_DECK_RESULT_ACTUAL_START` / `CLI_DECK_RESULT_ACTUAL_END` 协议块触发结果处理。
+- CLI Deck 解析 worker 结果后更新任务状态，并优先把结果和当前 swarm status 回传给 Brain。
+- 如果没有可用 Brain，CLI Deck 按结果自动排队下一步：
+  - `done` / `needs_review` -> review
+  - `needs_test` -> test
+  - `blocked` -> research
 
 Worker 结果协议：
 
@@ -147,6 +150,27 @@ task: review | short task for a review-capable worker
 task: test | short task for a test-capable worker
 CLI_DECK_PLAN_ACTUAL_END
 ```
+
+Brain 控制协议：
+
+```text
+CLI_DECK_COMMAND_ACTUAL_START
+action: dispatch | status | cancel | retry | message
+capability: implement | test | review | research | custom
+target: session id, session title, capability, or brain
+task_id: task-1
+task: worker task text
+message: direct message for target session
+CLI_DECK_COMMAND_ACTUAL_END
+```
+
+命令语义：
+
+- `dispatch`: 创建 task，并派发给 `target` 或匹配 `capability` 的 worker。必填 `task`，可选 `capability`、`target`。
+- `status`: CLI Deck 把 live sessions、Brain、task 列表写回 Brain terminal。
+- `cancel`: 把指定 `task_id` 标记为 `cancelled`，不会强杀已经运行的 CLI 进程。
+- `retry`: 把指定 `task_id` 重置为 queued 并重新派发。
+- `message`: 把 `message` 直接写入 `target` session。
 
 ## 5. 非目标
 
@@ -407,9 +431,10 @@ Orchestrator 面板在 sidebar 内展示调度目标、worker roster、任务队
   - 退出后写 summary
   - 更新 project memory
   - renderer 收到 `memory:updated`
-- Orchestrator 能创建 objective task，并按能力派发给 live worker session。
-- Orchestrator 能把 objective 原样发送给选中的 Brain session，并只在解析到 `CLI_DECK_PLAN_ACTUAL` 协议块后生成 worker tasks。
-- Orchestrator 能解析 `CLI_DECK_RESULT_ACTUAL` 协议块，并根据 status 排队 review/test/research 后续任务。
+- Orchestrator 能把 objective 发送给选中的 Brain session，并在 Brain 输出 `CLI_DECK_COMMAND_ACTUAL` 后执行 dispatch/status/cancel/retry/message。
+- Orchestrator 能解析 `CLI_DECK_PLAN_ACTUAL` 协议块，并按 capability 创建 worker tasks。
+- Orchestrator 能解析 `CLI_DECK_RESULT_ACTUAL` 协议块，更新 task 状态，并把 worker result 与 swarm status 回传给 Brain。
+- 无可用 Brain 时，Orchestrator 能根据 worker result status 排队 review/test/research 后续任务。
 - Windows `npm.cmd run build:dir` 成功。
 - `npm.cmd test` 成功。
 - `node --check` 对 main/preload/renderer/scripts 成功。

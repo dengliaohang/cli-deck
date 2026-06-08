@@ -202,7 +202,9 @@ function parseResultBlock(block) {
       line === 'CLI_DECK_RESULT_ACTUAL_START' ||
       line === 'CLI_DECK_RESULT_ACTUAL_END' ||
       line === 'CLI_DECK_PLAN_ACTUAL_START' ||
-      line === 'CLI_DECK_PLAN_ACTUAL_END'
+      line === 'CLI_DECK_PLAN_ACTUAL_END' ||
+      line === 'CLI_DECK_COMMAND_ACTUAL_START' ||
+      line === 'CLI_DECK_COMMAND_ACTUAL_END'
     ) {
       continue;
     }
@@ -223,6 +225,37 @@ function parseResultBlock(block) {
   return result;
 }
 
+function parseCommandBlock(block) {
+  const command = { action: '', capability: 'implement', task: '', taskId: '', target: '', message: '', auto: '' };
+  let section = '';
+  for (const rawLine of block.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line === 'CLI_DECK_COMMAND_ACTUAL_START' || line === 'CLI_DECK_COMMAND_ACTUAL_END') {
+      continue;
+    }
+    const match = line.match(/^([a-z_]+):\s*(.*)$/i);
+    if (match) {
+      section = match[1].toLowerCase();
+      const value = match[2].trim();
+      if (section === 'action') command.action = value.toLowerCase();
+      if (section === 'capability') command.capability = value.toLowerCase() || 'implement';
+      if (section === 'task' || section === 'title') command.task = value;
+      if (section === 'task_id') command.taskId = value;
+      if (section === 'target' || section === 'session') command.target = value;
+      if (section === 'message') command.message = value;
+      if (section === 'auto') command.auto = value.toLowerCase();
+      continue;
+    }
+    if (section === 'task' || section === 'title') {
+      command.task = [command.task, line.replace(/^-\s*/, '')].filter(Boolean).join('\n');
+    }
+    if (section === 'message') {
+      command.message = [command.message, line.replace(/^-\s*/, '')].filter(Boolean).join('\n');
+    }
+  }
+  return command;
+}
+
 function parsePlanBlock(block) {
   const tasks = [];
   for (const line of block.split(/\r?\n/)) {
@@ -232,6 +265,42 @@ function parsePlanBlock(block) {
     }
   }
   return tasks;
+}
+
+function consumeOrchestratorBlocks(buffer) {
+  const events = [];
+  const definitions = [
+    {
+      start: 'CLI_DECK_PLAN_ACTUAL_START',
+      end: 'CLI_DECK_PLAN_ACTUAL_END',
+      parse: (block) => ({ type: 'plan', tasks: parsePlanBlock(block) })
+    },
+    {
+      start: 'CLI_DECK_RESULT_ACTUAL_START',
+      end: 'CLI_DECK_RESULT_ACTUAL_END',
+      parse: (block) => ({ type: 'result', result: parseResultBlock(block) })
+    },
+    {
+      start: 'CLI_DECK_COMMAND_ACTUAL_START',
+      end: 'CLI_DECK_COMMAND_ACTUAL_END',
+      parse: (block) => ({ type: 'command', command: parseCommandBlock(block) })
+    }
+  ];
+
+  while (true) {
+    const next = definitions
+      .map((definition) => ({ ...definition, index: buffer.indexOf(definition.start) }))
+      .filter((definition) => definition.index !== -1)
+      .sort((left, right) => left.index - right.index)[0];
+    if (!next) break;
+    const end = buffer.indexOf(next.end, next.index + next.start.length);
+    if (end === -1) break;
+    const blockEnd = end + next.end.length;
+    events.push(next.parse(buffer.slice(next.index, blockEnd)));
+    buffer = buffer.slice(blockEnd);
+  }
+
+  return events;
 }
 
 function buildTypedPromptWrites(prompt) {
@@ -314,6 +383,37 @@ CLI_DECK_PLAN_ACTUAL_END
     { capability: 'implement', title: 'build the feature' },
     { capability: 'review', title: 'review the diff' }
   ]
+);
+const parsedCommand = parseCommandBlock(`
+CLI_DECK_COMMAND_ACTUAL_START
+action: dispatch
+capability: implement
+target: opencode
+task: build the worker bridge
+CLI_DECK_COMMAND_ACTUAL_END
+`);
+assert.deepEqual(parsedCommand, {
+  action: 'dispatch',
+  capability: 'implement',
+  task: 'build the worker bridge',
+  taskId: '',
+  target: 'opencode',
+  message: '',
+  auto: ''
+});
+assert.deepEqual(
+  consumeOrchestratorBlocks(`
+noise
+CLI_DECK_COMMAND_ACTUAL_START
+action: status
+CLI_DECK_COMMAND_ACTUAL_END
+CLI_DECK_RESULT_ACTUAL_START
+task_id: task-9
+status: done
+summary: ok
+CLI_DECK_RESULT_ACTUAL_END
+`).map((event) => event.type),
+  ['command', 'result']
 );
 assert.deepEqual(buildTypedPromptWrites('hello'), ['hello', '\r']);
 assert.deepEqual(buildPastedPromptWrites('hello'), ['\x1b[200~hello\x1b[201~', '\r']);

@@ -515,6 +515,11 @@ button:disabled {
   border-left-color: var(--danger);
 }
 
+.orchestrator-task.task-cancelled {
+  border-left-color: #707987;
+  opacity: 0.72;
+}
+
 .orchestrator-task-title,
 .orchestrator-message-text {
   overflow-wrap: anywhere;

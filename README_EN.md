@@ -10,7 +10,7 @@ CLI Deck is an Electron desktop workspace for running and managing multiple AI C
 - Automatically tiles multiple sessions, which is useful when running several Codex / Claude / OpenCode tasks in parallel.
 - Supports custom command, arguments, and working directory.
 - Lets you decide whether each new session is recorded in Memory, which is useful for temporary or sensitive sessions.
-- Orchestrator: lets you choose or create one AI CLI as the swarm brain for normal interaction; when the brain or workers emit `CLI_DECK_*_ACTUAL` blocks, CLI Deck dispatches follow-up work by capability.
+- Orchestrator: lets you choose or create one AI CLI as the swarm brain; the brain can emit `CLI_DECK_COMMAND_ACTUAL` blocks to dispatch, cancel, retry, request status, or message a worker, and worker results are reported back to the brain for the next scheduling step.
 - Session titles automatically include the tail of the current path, for example `Codex — workspace/tools`; long paths keep only the last two segments.
 - Session actions: restart, duplicate, rename, copy command, open cwd, and close stopped.
 - Local memory layer:
@@ -130,6 +130,31 @@ Default policy:
 - Failed session raw logs are kept for 60 days.
 - Session JSON summaries and project memory are retained.
 - Raw log toggle, size, and retention days can be changed in Settings.
+
+## Orchestrator Swarm Scheduling
+
+Dispatch first sends the objective to the selected Brain CLI. After normal reasoning, the brain can make CLI Deck act by emitting a complete `CLI_DECK_COMMAND_ACTUAL` or `CLI_DECK_PLAN_ACTUAL` block.
+
+Example dispatch command:
+
+```text
+CLI_DECK_COMMAND_ACTUAL_START
+action: dispatch
+capability: implement
+target: opencode
+task: Implement the sidebar task-list scrolling fix
+CLI_DECK_COMMAND_ACTUAL_END
+```
+
+Supported Brain commands:
+
+- `dispatch`: requires `task`; optional `capability` and `target`
+- `status`: asks CLI Deck to report sessions and tasks back to the brain
+- `cancel`: requires `task_id`
+- `retry`: requires `task_id`
+- `message`: requires `target` and `message`
+
+When a worker finishes with a `CLI_DECK_RESULT_ACTUAL` block, CLI Deck updates task state and sends the result plus swarm status back to the Brain.
 
 ## Non-Goals
 

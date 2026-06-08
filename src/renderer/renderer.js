@@ -604,6 +604,26 @@ function pasteAndSubmitPrompt(sessionId, prompt) {
   window.setTimeout(() => window.cliDeck.writeTerminal(sessionId, '\r'), 50);
 }
 
+function buildBrainObjectivePrompt(objective) {
+  return [
+    'CLI Deck swarm objective',
+    '',
+    'Objective:',
+    objective,
+    '',
+    'You are the selected swarm brain. Work normally, then control worker CLIs through CLI Deck when useful.',
+    'To make CLI Deck act, emit a command actual block. The start marker is CLI_DECK_COMMAND_ + ACTUAL_START; the end marker is CLI_DECK_COMMAND_ + ACTUAL_END.',
+    'Supported command actions:',
+    '- dispatch: fields capability and task',
+    '- status: no other fields required',
+    '- cancel: field task_id',
+    '- retry: field task_id',
+    '- message: fields target and message',
+    'You can also create a plan with marker prefix CLI_DECK_PLAN_ plus ACTUAL_START / ACTUAL_END and lines like task: capability | task text.',
+    'Only emit a command or plan block when CLI Deck should route work.'
+  ].join('\n');
+}
+
 function buildWorkerPrompt(task, session) {
   return [
     '',
@@ -613,8 +633,11 @@ function buildWorkerPrompt(task, session) {
     `Required capability: ${task.capability}`,
     `Your session capabilities: ${formatCapabilities(session.capabilities)}`,
     '',
-    'Work on this task normally and summarize the result for the user.',
-    `Keep this task id in mind if you intentionally emit a CLI Deck routing result later: ${task.id}`,
+    'Work on this task normally. When finished, report a CLI Deck result actual block.',
+    'The start marker is CLI_DECK_RESULT_ + ACTUAL_START; the end marker is CLI_DECK_RESULT_ + ACTUAL_END.',
+    'Fields: task_id, status, summary, details, next.',
+    'Allowed status values: done, blocked, needs_review, needs_test.',
+    `Use task_id: ${task.id}`,
     '',
     'Task:',
     task.title,
@@ -631,23 +654,57 @@ function findSessionForCapability(capability) {
   );
 }
 
-function dispatchTask(taskId) {
-  const task = state.orchestrator.tasks.find((item) => item.id === taskId);
-  if (!task || task.status === 'running') {
-    return;
-  }
+function getLiveBrainSession() {
+  const brain = state.sessions.get(state.orchestrator.brainSessionId);
+  return brain && !brain.exited ? brain : null;
+}
 
-  const session = findSessionForCapability(task.capability);
-  if (!session) {
-    addOrchestratorMessage('blocked', `No live CLI session can run ${task.id}. Start a worker session first.`);
-    return;
+function findSessionForTarget(target, capability = '') {
+  const liveSessions = Array.from(state.sessions.values()).filter((session) => !session.exited);
+  const value = String(target || '').trim().toLowerCase();
+  if (value === 'brain') {
+    return getLiveBrainSession();
   }
+  if (value) {
+    const byIdentity = liveSessions.find(
+      (session) => session.id.toLowerCase() === value || session.title.toLowerCase() === value
+    );
+    if (byIdentity) {
+      return byIdentity;
+    }
+    const byCapability = liveSessions.find((session) => session.capabilities.includes(value));
+    if (byCapability) {
+      return byCapability;
+    }
+  }
+  return capability ? findSessionForCapability(capability) : null;
+}
 
+function dispatchTaskToSession(task, session) {
+  if (!task || !session || session.exited) {
+    return false;
+  }
   task.status = 'running';
   task.assignedSessionId = session.id;
   pasteAndSubmitPrompt(session.id, buildWorkerPrompt(task, session));
   addOrchestratorMessage('dispatch', `${task.id} -> ${session.title}`, { taskId: task.id, sessionId: session.id });
   renderOrchestrator();
+  return true;
+}
+
+function dispatchTask(taskId, targetSessionId = '') {
+  const task = state.orchestrator.tasks.find((item) => item.id === taskId);
+  if (!task || ['running', 'done', 'cancelled'].includes(task.status)) {
+    return;
+  }
+
+  const session = targetSessionId ? state.sessions.get(targetSessionId) : findSessionForCapability(task.capability);
+  if (!session) {
+    addOrchestratorMessage('blocked', `No live CLI session can run ${task.id}. Start a worker session first.`);
+    return;
+  }
+
+  dispatchTaskToSession(task, session);
 }
 
 function dispatchQueuedTasks() {
@@ -752,6 +809,58 @@ function parseResultBlock(block) {
   return result;
 }
 
+function parseCommandBlock(block) {
+  const command = {
+    action: '',
+    capability: 'implement',
+    task: '',
+    taskId: '',
+    target: '',
+    message: '',
+    auto: ''
+  };
+  let section = '';
+
+  for (const rawLine of block.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (
+      !line ||
+      line === 'CLI_DECK_COMMAND_ACTUAL_START' ||
+      line === 'CLI_DECK_COMMAND_ACTUAL_END'
+    ) {
+      continue;
+    }
+    const match = line.match(/^([a-z_]+):\s*(.*)$/i);
+    if (match) {
+      section = match[1].toLowerCase();
+      const value = match[2].trim();
+      if (section === 'action') {
+        command.action = value.toLowerCase();
+      } else if (section === 'capability') {
+        command.capability = value.toLowerCase() || 'implement';
+      } else if (section === 'task' || section === 'title') {
+        command.task = value;
+      } else if (section === 'task_id') {
+        command.taskId = value;
+      } else if (section === 'target' || section === 'session') {
+        command.target = value;
+      } else if (section === 'message') {
+        command.message = value;
+      } else if (section === 'auto') {
+        command.auto = value.toLowerCase();
+      }
+      continue;
+    }
+    if (section === 'task' || section === 'title') {
+      command.task = [command.task, line.replace(/^-\s*/, '')].filter(Boolean).join('\n');
+    } else if (section === 'message') {
+      command.message = [command.message, line.replace(/^-\s*/, '')].filter(Boolean).join('\n');
+    }
+  }
+
+  return command;
+}
+
 function parsePlanBlock(block) {
   const tasks = [];
   for (const line of block.split(/\r?\n/)) {
@@ -766,26 +875,46 @@ function parsePlanBlock(block) {
 function consumeResultBlocks(session, data) {
   session.orchestratorBuffer = `${session.orchestratorBuffer || ''}${data}`;
   const events = [];
+  const definitions = [
+    {
+      type: 'plan',
+      start: 'CLI_DECK_PLAN_ACTUAL_START',
+      end: 'CLI_DECK_PLAN_ACTUAL_END',
+      parse: (block) => ({ type: 'plan', tasks: parsePlanBlock(block) })
+    },
+    {
+      type: 'result',
+      start: 'CLI_DECK_RESULT_ACTUAL_START',
+      end: 'CLI_DECK_RESULT_ACTUAL_END',
+      parse: (block) => ({ type: 'result', result: parseResultBlock(block) })
+    },
+    {
+      type: 'command',
+      start: 'CLI_DECK_COMMAND_ACTUAL_START',
+      end: 'CLI_DECK_COMMAND_ACTUAL_END',
+      parse: (block) => ({ type: 'command', command: parseCommandBlock(block) })
+    }
+  ];
 
-  let start = session.orchestratorBuffer.indexOf('CLI_DECK_PLAN_ACTUAL_START');
-  let end = session.orchestratorBuffer.indexOf('CLI_DECK_PLAN_ACTUAL_END');
-  while (start !== -1 && end !== -1 && end > start) {
-    const blockEnd = end + 'CLI_DECK_PLAN_ACTUAL_END'.length;
-    events.push({ type: 'plan', tasks: parsePlanBlock(session.orchestratorBuffer.slice(start, blockEnd)) });
+  while (true) {
+    const next = definitions
+      .map((definition) => ({ ...definition, index: session.orchestratorBuffer.indexOf(definition.start) }))
+      .filter((definition) => definition.index !== -1)
+      .sort((left, right) => left.index - right.index)[0];
+
+    if (!next) {
+      break;
+    }
+
+    const end = session.orchestratorBuffer.indexOf(next.end, next.index + next.start.length);
+    if (end === -1) {
+      session.orchestratorBuffer = session.orchestratorBuffer.slice(next.index);
+      break;
+    }
+
+    const blockEnd = end + next.end.length;
+    events.push(next.parse(session.orchestratorBuffer.slice(next.index, blockEnd)));
     session.orchestratorBuffer = session.orchestratorBuffer.slice(blockEnd);
-    start = session.orchestratorBuffer.indexOf('CLI_DECK_PLAN_ACTUAL_START');
-    end = session.orchestratorBuffer.indexOf('CLI_DECK_PLAN_ACTUAL_END');
-  }
-
-  start = session.orchestratorBuffer.indexOf('CLI_DECK_RESULT_ACTUAL_START');
-  end = session.orchestratorBuffer.indexOf('CLI_DECK_RESULT_ACTUAL_END');
-
-  while (start !== -1 && end !== -1 && end > start) {
-    const blockEnd = end + 'CLI_DECK_RESULT_ACTUAL_END'.length;
-    events.push({ type: 'result', result: parseResultBlock(session.orchestratorBuffer.slice(start, blockEnd)) });
-    session.orchestratorBuffer = session.orchestratorBuffer.slice(blockEnd);
-    start = session.orchestratorBuffer.indexOf('CLI_DECK_RESULT_ACTUAL_START');
-    end = session.orchestratorBuffer.indexOf('CLI_DECK_RESULT_ACTUAL_END');
   }
 
   if (session.orchestratorBuffer.length > 12000) {
@@ -795,7 +924,150 @@ function consumeResultBlocks(session, data) {
   return events;
 }
 
+function buildSwarmStatusSummary() {
+  const liveSessions = Array.from(state.sessions.values()).filter((session) => !session.exited);
+  const brain = getLiveBrainSession();
+  const sessionLines = liveSessions.length
+    ? liveSessions.map((session) => {
+        const role = brain?.id === session.id ? 'brain' : formatCapabilities(session.capabilities);
+        return `- ${session.title}: ${role}`;
+      })
+    : ['- none'];
+  const taskLines = state.orchestrator.tasks.length
+    ? state.orchestrator.tasks.slice(0, 20).map((task) => {
+        const assignee = task.assignedSessionId ? state.sessions.get(task.assignedSessionId)?.title || task.assignedSessionId : 'unassigned';
+        return `- ${task.id}: ${task.status} / ${task.capability} / ${assignee} / ${task.title}`;
+      })
+    : ['- none'];
+
+  return [
+    'CLI Deck swarm status',
+    '',
+    'Sessions:',
+    ...sessionLines,
+    '',
+    'Tasks:',
+    ...taskLines
+  ].join('\n');
+}
+
+function sendStatusToBrain(reason = 'status') {
+  const brain = getLiveBrainSession();
+  if (!brain) {
+    addOrchestratorMessage('blocked', `Cannot send ${reason}; no live brain selected.`);
+    return false;
+  }
+  pasteAndSubmitPrompt(brain.id, buildSwarmStatusSummary());
+  addOrchestratorMessage('brain', `Sent ${reason} to brain: ${brain.title}`);
+  return true;
+}
+
+function sendWorkerResultToBrain(workerSession, result, task) {
+  const brain = getLiveBrainSession();
+  if (!brain || brain.id === workerSession.id) {
+    return false;
+  }
+  const details = result.details.length ? result.details.map((detail) => `- ${detail}`) : ['- none'];
+  const prompt = [
+    'CLI Deck worker result',
+    '',
+    `Worker: ${workerSession.title}`,
+    `Task ID: ${result.taskId}`,
+    `Task: ${task?.title || 'unknown'}`,
+    `Status: ${result.status}`,
+    `Summary: ${result.summary || 'No summary'}`,
+    'Details:',
+    ...details,
+    `Next: ${result.next || 'none'}`,
+    '',
+    buildSwarmStatusSummary(),
+    '',
+    'Continue coordinating the swarm. If CLI Deck should act, emit a command actual block using marker prefix CLI_DECK_COMMAND_ plus ACTUAL_START / ACTUAL_END.'
+  ].join('\n');
+  pasteAndSubmitPrompt(brain.id, prompt);
+  addOrchestratorMessage('brain', `Reported ${result.taskId} result to brain`);
+  return true;
+}
+
+function handleBrainCommand(session, command) {
+  const brain = getLiveBrainSession();
+  if (!brain || session.id !== brain.id) {
+    addOrchestratorMessage('blocked', `Ignored command from non-brain session: ${session.title}`);
+    return;
+  }
+
+  if (command.action === 'dispatch') {
+    if (!command.task) {
+      addOrchestratorMessage('blocked', 'Brain dispatch command missing task.');
+      return;
+    }
+    const task = createSwarmTask(command.task, command.capability || 'implement');
+    state.orchestrator.tasks.unshift(task);
+    addOrchestratorMessage('command', `Brain queued ${task.id}: ${task.capability}`);
+    const target = command.target ? findSessionForTarget(command.target, task.capability) : null;
+    if (command.target && !target) {
+      addOrchestratorMessage('blocked', `Brain dispatch target not found: ${command.target}`);
+      sendStatusToBrain('dispatch target failure');
+      renderOrchestrator();
+      return;
+    }
+    dispatchTask(task.id, target?.id || '');
+    return;
+  }
+
+  if (command.action === 'status') {
+    sendStatusToBrain('status');
+    return;
+  }
+
+  if (command.action === 'cancel') {
+    const task = state.orchestrator.tasks.find((item) => item.id === command.taskId);
+    if (!task) {
+      addOrchestratorMessage('blocked', `Brain cancel command could not find ${command.taskId || 'task'}.`);
+      return;
+    }
+    task.status = 'cancelled';
+    addOrchestratorMessage('command', `Brain cancelled ${task.id}`);
+    renderOrchestrator();
+    sendStatusToBrain('cancel result');
+    return;
+  }
+
+  if (command.action === 'retry') {
+    const task = state.orchestrator.tasks.find((item) => item.id === command.taskId);
+    if (!task) {
+      addOrchestratorMessage('blocked', `Brain retry command could not find ${command.taskId || 'task'}.`);
+      return;
+    }
+    task.status = 'queued';
+    task.assignedSessionId = null;
+    task.result = null;
+    addOrchestratorMessage('command', `Brain retried ${task.id}`);
+    renderOrchestrator();
+    dispatchTask(task.id);
+    return;
+  }
+
+  if (command.action === 'message') {
+    const target = findSessionForTarget(command.target, command.capability);
+    if (!target || !command.message) {
+      addOrchestratorMessage('blocked', 'Brain message command missing target or message.');
+      return;
+    }
+    pasteAndSubmitPrompt(target.id, command.message);
+    addOrchestratorMessage('command', `Brain messaged ${target.title}`);
+    return;
+  }
+
+  addOrchestratorMessage('blocked', `Unknown brain command: ${command.action || 'missing action'}`);
+}
+
 function handleBrainPlan(session, plannedTasks) {
+  const brain = getLiveBrainSession();
+  if (!brain || session.id !== brain.id) {
+    addOrchestratorMessage('blocked', `Ignored plan from non-brain session: ${session.title}`);
+    return;
+  }
   if (!plannedTasks.length) {
     addOrchestratorMessage('blocked', `${session.title} returned an empty plan`);
     return;
@@ -821,7 +1093,9 @@ function handleWorkerResult(session, result) {
     taskId: result.taskId,
     sessionId: session.id
   });
-  enqueueFollowUpFromResult(result, task);
+  if (!sendWorkerResultToBrain(session, result, task)) {
+    enqueueFollowUpFromResult(result, task);
+  }
   renderOrchestrator();
   dispatchQueuedTasks();
 }
@@ -844,7 +1118,7 @@ function submitSwarmObjective(value) {
 
   const brain = state.sessions.get(state.orchestrator.brainSessionId);
   if (brain && !brain.exited) {
-    submitTypedPrompt(brain.id, objective);
+    pasteAndSubmitPrompt(brain.id, buildBrainObjectivePrompt(objective));
     setActiveSession(brain.id);
     addOrchestratorMessage('brain', `Sent objective to brain terminal: ${brain.title}`);
     return;
@@ -961,7 +1235,7 @@ function renderOrchestrator() {
   }
   elements.orchestratorQueue.append(roster);
 
-  const tasks = state.orchestrator.tasks.slice(0, 8);
+  const tasks = state.orchestrator.tasks.slice(0, 30);
   if (tasks.length === 0) {
     appendText(elements.orchestratorQueue, 'p', 'memory-empty', 'Enter an objective to dispatch the first task.');
   } else {
@@ -1661,6 +1935,8 @@ window.cliDeck.onTerminalData(({ id, data }) => {
         handleBrainPlan(session, event.tasks);
       } else if (event.type === 'result') {
         handleWorkerResult(session, event.result);
+      } else if (event.type === 'command') {
+        handleBrainCommand(session, event.command);
       }
     }
   }
